@@ -1,37 +1,47 @@
-import { loadConfig } from "./config.js";
-import { createControlPlaneServer } from "./server.js";
+/** KAgent Control Plane — Fastify server entry point. */
 
-const config = loadConfig();
-const server = createControlPlaneServer();
+import Fastify from "fastify";
+import { registerRoutes } from "./routes.js";
 
-server.listen(config.port, config.host, () => {
+const app = Fastify({
+  logger: {
+    transport: {
+      target: "pino-pretty",
+      options: { colorize: false, translateTime: "HH:MM:ss" },
+    },
+  },
+});
+
+// Register API routes
+await registerRoutes(app);
+
+// Start
+const port = parseInt(process.env["CONTROL_PLANE_PORT"] ?? "8100", 10);
+const host = process.env["CONTROL_PLANE_HOST"] ?? "0.0.0.0";
+
+try {
+  await app.listen({ port, host });
   console.log(
     JSON.stringify({
       level: "info",
       service: "control-plane",
       message: "server_started",
-      host: config.host,
-      port: config.port
+      host,
+      port,
+      version: "0.2.0",
     })
   );
-});
-
-function shutdown(signal: string): void {
-  console.log(
-    JSON.stringify({
-      level: "info",
-      service: "control-plane",
-      message: "shutdown_requested",
-      signal
-    })
-  );
-  server.close((error) => {
-    if (error) {
-      console.error(error);
-      process.exitCode = 1;
-    }
-  });
+} catch (err) {
+  app.log.error(err);
+  process.exit(1);
 }
 
-process.once("SIGINT", () => shutdown("SIGINT"));
-process.once("SIGTERM", () => shutdown("SIGTERM"));
+// Graceful shutdown
+async function shutdown(signal: string) {
+  console.log(JSON.stringify({ level: "info", service: "control-plane", message: "shutdown", signal }));
+  await app.close();
+  process.exit(0);
+}
+
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
