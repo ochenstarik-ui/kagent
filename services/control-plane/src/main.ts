@@ -1,7 +1,9 @@
 /** KAgent Control Plane — Fastify server entry point. */
 
 import Fastify from "fastify";
+import { Pool } from "pg";
 import { registerRoutes } from "./routes.js";
+import { registerAuthRoutes } from "./auth-routes.js";
 
 const app = Fastify({
   logger: {
@@ -12,8 +14,15 @@ const app = Fastify({
   },
 });
 
+// Database pool
+const pool = new Pool({
+  connectionString: process.env["DATABASE_URL"] ?? "postgres://kagent:change-me-locally@127.0.0.1:5432/kagent",
+  max: 10,
+});
+
 // Register API routes
 await registerRoutes(app);
+await registerAuthRoutes(app, pool);
 
 // Start
 const port = parseInt(process.env["CONTROL_PLANE_PORT"] ?? "8100", 10);
