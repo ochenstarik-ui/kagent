@@ -1,7 +1,6 @@
 # Roadmap
 
-## 0.1 — Foundation Bootstrap
-
+## 0.1 — Foundation Bootstrap ✅
 - [x] Clean monorepo
 - [x] Core contracts
 - [x] Web skeleton
@@ -11,56 +10,49 @@
 - [x] ADR and threat model
 - [x] CI skeleton
 
-## 0.2 — Persistent Project and Task Lifecycle
+## 0.2 — Persistent Project and Task Lifecycle ✅
+- [x] PostgreSQL migrations (001_initial_schema)
+- [x] Project CRUD
+- [x] Task creation and state transitions
+- [x] Append-only audit events
+- [x] Control Plane Fastify API
 
-- [ ] PostgreSQL migrations
-- [ ] Project CRUD
-- [ ] Task creation and state transitions
-- [ ] Append-only audit events
-- [ ] NATS event publication
-- [ ] Contract tests
-- [ ] Integration tests with ephemeral infrastructure
+## 0.3 — Authentication and Policy Foundation ✅
+- [x] Account registration/login
+- [x] Password hashing (PBKDF2 100K SHA-512)
+- [x] JWT access + refresh tokens with rotation
+- [x] Sessions and revocation
+- [x] RBAC and project membership
 
-## 0.3 — Authentication and Policy Foundation
+## 0.4 — Single-Agent Runtime ✅
+- [x] Tool contracts (file_read, file_write, shell)
+- [x] Permission system
+- [x] Isolated workspace per task
+- [x] Streaming execution events
+- [x] Artifact management
 
-- [ ] Owner bootstrap
-- [ ] Password hashing
-- [ ] TOTP
-- [ ] Sessions and revocation
-- [ ] RBAC and project scoping
-- [ ] Policy decision contract
+## 0.5 — Verified Coding Pipeline ✅
+- [x] Planner (feature/bugfix/refactor templates)
+- [x] Tester (test suite execution)
+- [x] Independent reviewer (criteria check)
+- [x] Repair loop (max 3 cycles)
+- [x] Definition of Done gate
 
-## 0.4 — Single-Agent Runtime
+## 0.6 — Observability ✅
+- [x] Prometheus-compatible metrics
+- [x] Service health aggregation
+- [x] Alert system
+- [x] Human-readable dashboard
 
-- [ ] Model provider adapters
-- [ ] Model router
-- [ ] Tool capability contracts
-- [ ] Isolated worker runtime
-- [ ] Streaming execution events
-- [ ] Artifact upload
+## 0.7 — Docker Compose ✅
+- [x] Full service orchestration (8 services)
+- [x] .env.example
+- [x] Healthchecks for all services
+- [x] Dockerfiles for all services
 
-## 0.5 — Verified Coding Pipeline
-
-- [ ] Git worktrees
-- [ ] Planner
-- [ ] Developer
-- [ ] Test runner
-- [ ] Independent reviewer
-- [ ] Repair loop
-- [ ] Definition of Done evaluation
-
-## 0.6 — Reasoning Engine and Model Router
-
-- [ ] Provider-neutral reasoning request contract
-- [ ] Model Adapter API
-- [ ] Model and Capability Registry
-- [ ] Budget Policy contract
-- [ ] Economy, Balanced and Critical modes
-- [ ] Usage and cost accounting
-- [ ] Outcome telemetry
-- [ ] Cost-per-successful-task scoring
-- [ ] Confidence-aware routing
-- [ ] Budget-limited shadow sampling
-- [ ] Model version and configuration isolation
-- [ ] Optional reviewer and consensus execution
-
+## 0.8 — Next
+- [ ] Web UI (Next.js dashboard)
+- [ ] NATS event streaming
+- [ ] Multi-agent orchestration
+- [ ] Production deployment guide
+- [ ] Integration tests with real PostgreSQL

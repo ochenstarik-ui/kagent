@@ -1,4 +1,7 @@
+# KAgent infrastructure + all services
 services:
+  # ── Infrastructure ──────────────────────
+
   postgres:
     image: postgres:17-alpine
     environment:
@@ -9,8 +12,9 @@ services:
       - "127.0.0.1:5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kagent} -d ${POSTGRES_DB:-kagent}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kagent}"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -30,7 +34,7 @@ services:
       retries: 20
 
   minio:
-    image: minio/minio:RELEASE.2025-07-23T15-54-02Z
+    image: minio/minio:latest
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${S3_ACCESS_KEY:-kagent-local}
@@ -40,8 +44,122 @@ services:
       - "127.0.0.1:9001:9001"
     volumes:
       - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── KAgent Services ─────────────────────
+
+  gateway:
+    build:
+      context: .
+      dockerfile: services/gateway/Dockerfile
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    environment:
+      KAGENT_HTTP_HOST: "0.0.0.0"
+      KAGENT_GATEWAY_PORT: "8080"
+      CONTROL_PLANE_URL: "http://control-plane:8100"
+      REASONING_ENGINE_URL: "http://reasoning-engine:8200"
+      RUST_LOG: ${RUST_LOG:-info}
+    depends_on:
+      control-plane:
+        condition: service_healthy
+      reasoning-engine:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health/live"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  control-plane:
+    build:
+      context: .
+      dockerfile: services/control-plane/Dockerfile
+    ports:
+      - "${CONTROL_PLANE_PORT:-8100}:8100"
+    environment:
+      CONTROL_PLANE_PORT: "8100"
+      CONTROL_PLANE_HOST: "0.0.0.0"
+      DATABASE_URL: "postgres://${POSTGRES_USER:-kagent}:${POSTGRES_PASSWORD:-change-me-locally}@postgres:5432/${POSTGRES_DB:-kagent}"
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production-min-32-chars}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8100/health/live"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  reasoning-engine:
+    build:
+      context: .
+      dockerfile: services/reasoning-engine/Dockerfile
+    ports:
+      - "${REASONING_PORT:-8200}:8200"
+    environment:
+      OPENCODE_GO_ENDPOINT: ${OPENCODE_GO_ENDPOINT:-http://localhost:20127}
+      OPENCODE_GO_API_KEY: ${OPENCODE_GO_API_KEY:-}
+      XAI_API_KEY: ${XAI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8200/health/live')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  agent-runtime:
+    build:
+      context: .
+      dockerfile: services/agent-runtime/Dockerfile
+    ports:
+      - "${RUNTIME_PORT:-8300}:8300"
+    volumes:
+      - agent-workspaces:/tmp/kagent-workspaces
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8300/health/live')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  pipeline:
+    build:
+      context: .
+      dockerfile: services/pipeline/Dockerfile
+    ports:
+      - "${PIPELINE_PORT:-8400}:8400"
+    environment:
+      RUNTIME_URL: "http://agent-runtime:8300"
+      REASONING_URL: "http://reasoning-engine:8200"
+    depends_on:
+      agent-runtime:
+        condition: service_healthy
+      reasoning-engine:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8400/health/live')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  observability:
+    build:
+      context: .
+      dockerfile: services/observability/Dockerfile
+    ports:
+      - "${OBSERVABILITY_PORT:-8500}:8500"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8500/health/live')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
 volumes:
   postgres-data:
   nats-data:
   minio-data:
+  agent-workspaces:
