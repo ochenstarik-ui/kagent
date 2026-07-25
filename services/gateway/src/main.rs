@@ -13,8 +13,15 @@ use hyper_util::{
 };
 use http_body_util::BodyExt;
 use serde::Serialize;
-use std::{env, net::SocketAddr, str::FromStr, sync::Arc, time::Duration};
-use tokio::net::TcpListener;
+use std::{
+    collections::HashMap,
+    env, net::SocketAddr, str::FromStr, sync::Arc, time::Duration,
+};
+use tokio::{
+    net::TcpListener,
+    sync::Mutex,
+    time::Instant,
+};
 use tower_http::{
     cors::CorsLayer,
     limit::RequestBodyLimitLayer,
@@ -25,6 +32,45 @@ use tower_http::{
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
+
+// ── Rate Limiter ──────────────────────────
+
+struct RateLimiter {
+    window: Duration,
+    max_requests: u32,
+    clients: Arc<Mutex<HashMap<String, (Instant, u32)>>>,
+}
+
+impl RateLimiter {
+    fn new(window_secs: u64, max_requests: u32) -> Self {
+        Self {
+            window: Duration::from_secs(window_secs),
+            max_requests,
+            clients: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    async fn check(&self, client_ip: &str) -> bool {
+        let mut guard = self.clients.lock().await;
+        let now = Instant::now();
+        
+        if let Some((start, count)) = guard.get_mut(client_ip) {
+            if now.duration_since(*start) > self.window {
+                *start = now;
+                *count = 1;
+                return true;
+            }
+            if *count >= self.max_requests {
+                return false;
+            }
+            *count += 1;
+            true
+        } else {
+            guard.insert(client_ip.to_string(), (now, 1));
+            true
+        }
+    }
+}
 
 // ── Application State ─────────────────────
 
