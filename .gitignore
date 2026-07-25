@@ -13,3 +13,4 @@ target/
 .vscode/
 data/
 artifacts/
+__pycache__/
