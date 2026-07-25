@@ -1,0 +1,18 @@
+{
+  "name": "kagent",
+  "private": true,
+  "version": "0.1.0-dev",
+  "packageManager": "pnpm@10.14.0",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "pnpm -r --if-present build",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
+    "format:check": "pnpm -r --if-present format:check",
+    "lint": "pnpm -r --if-present lint",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test",
+    "rust:check": "cargo fmt --manifest-path services/gateway/Cargo.toml --check && cargo clippy --manifest-path services/gateway/Cargo.toml --all-targets -- -D warnings && cargo test --manifest-path services/gateway/Cargo.toml"
+  }
+}
