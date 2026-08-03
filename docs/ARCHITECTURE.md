@@ -111,3 +111,16 @@ Model selection is learned mainly from real task execution. The platform records
 Dedicated comparisons are sampled and budget-limited. Normal tasks use one model unless policy, uncertainty or criticality justifies escalation.
 
 The canonical efficiency metric is cost per successful task, not price per call.
+
+## 9. Agent Workspace Control Plane
+
+Release 0.10 places a persistent workspace aggregate between approved tasks and
+the execution plane. PostgreSQL owns lifecycle, immutable task contracts, lease
+generations, session metadata, review state and opaque provisioning evidence.
+Workers own physical Git mirrors/worktrees and map checkoutRef values under one
+configured root; host filesystem paths are never returned.
+
+Worker leases expire and can be recovered after restart. The Agent Runtime
+revalidates the canonical task-contract digest before provisioning or context
+creation. PTY and Chromium processes remain later-release work. See ADR-0004,
+ADR-0005 and AGENT_WORKSPACE_COCKPIT.md.

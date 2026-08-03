@@ -1,6 +1,6 @@
 """Agent Runtime — isolated worker for single-agent execution.
 
-v0.4: Tool contracts, streaming events, sandbox execution, artifact upload.
+v0.10: Contract-bound workspace provisioning and isolated tool execution.
 """
 
 import asyncio
@@ -17,6 +17,9 @@ from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Optional
+
+from .task_contract import TaskExecutionContract
+from .workspace_provisioner import GitWorkspaceProvisioner
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -103,7 +106,9 @@ class ShellTool(ToolContract):
         )
     
     async def execute(self, params: dict[str, Any], workspace: Path) -> dict[str, Any]:
-        cwd = workspace / params.get("cwd", ".")
+        cwd = (workspace / params.get("cwd", ".")).resolve()
+        if not cwd.is_relative_to(workspace.resolve()):
+            return {"error": "Working directory escapes workspace"}
         try:
             proc = await asyncio.create_subprocess_shell(
                 params["command"],
@@ -148,6 +153,9 @@ class AgentContext:
     task_id: str
     project_id: str
     workspace: Path
+    workspace_ref: str
+    contract: TaskExecutionContract
+    contract_digest: str
     tools: list[ToolContract]
     status: AgentStatus = AgentStatus.IDLE
     events: list[ExecutionEvent] = field(default_factory=list)
@@ -165,19 +173,34 @@ class AgentRuntime:
         self.workspace_root = workspace_root or Path(tempfile.mkdtemp(prefix="kagent-"))
         self._contexts: dict[str, AgentContext] = {}
     
-    async def create_context(self, task_id: str, project_id: str, tools: Optional[list[ToolContract]] = None) -> AgentContext:
-        workspace = self.workspace_root / project_id / task_id
-        workspace.mkdir(parents=True, exist_ok=True)
-        
+    async def create_context(
+        self,
+        task_id: str,
+        project_id: str,
+        contract: TaskExecutionContract,
+        contract_digest: str,
+        workspace_ref: str,
+        workspace: Optional[Path] = None,
+        tools: Optional[list[ToolContract]] = None,
+    ) -> AgentContext:
+        contract.assert_digest(contract_digest)
+        if contract.taskId != task_id or contract.projectId != project_id:
+            raise ValueError("Task contract identity mismatch")
+        target = workspace or (self.workspace_root / project_id / task_id)
+        target.mkdir(parents=True, exist_ok=True)
+
         ctx = AgentContext(
             task_id=task_id,
             project_id=project_id,
-            workspace=workspace,
+            workspace=target,
+            workspace_ref=workspace_ref,
+            contract=contract,
+            contract_digest=contract_digest,
             tools=tools or self.DEFAULT_TOOLS[:],
         )
         self._contexts[task_id] = ctx
         return ctx
-    
+
     async def execute_tool(self, task_id: str, tool_name: str, params: dict[str, Any]) -> dict[str, Any]:
         ctx = self._contexts.get(task_id)
         if not ctx:
@@ -187,6 +210,11 @@ class AgentRuntime:
         if not tool:
             return {"error": f"Tool not found: {tool_name}. Available: {[t.name for t in ctx.tools]}"}
         
+        if tool_name in {"file_read", "file_write"}:
+            path = str(params.get("path", ""))
+            if not ctx.contract.allows_path(path):
+                return {"error": "Path is outside the immutable task contract"}
+
         # Record event
         ctx.events.append(ExecutionEvent(
             type="tool_call",
@@ -208,8 +236,11 @@ class AgentRuntime:
         if not ctx:
             raise ValueError(f"Context not found: {task_id}")
         
-        path = ctx.workspace / "artifacts" / name
-        path.parent.mkdir(exist_ok=True)
+        artifact_root = (ctx.workspace / "artifacts").resolve()
+        path = (artifact_root / name).resolve()
+        if not path.is_relative_to(artifact_root):
+            raise ValueError("Artifact path escapes workspace")
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content)
         ctx.artifacts.append(path)
         
@@ -284,14 +315,36 @@ class AgentRuntime:
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from pydantic import BaseModel, Field
 
-app = FastAPI(title="KAgent Runtime", version="0.4.0")
-runtime = AgentRuntime()
+app = FastAPI(title="KAgent Runtime", version="0.10.0-dev")
+runtime = AgentRuntime(Path(os.getenv("WORKSPACE_ROOT", "/tmp/kagent-workspaces")))
+provisioner = GitWorkspaceProvisioner(runtime.workspace_root)
 
 
 class CreateContextRequest(BaseModel):
     task_id: str
     project_id: str
+    workspace_ref: str
+    contract: TaskExecutionContract
+    contract_digest: str
     tools: list[str] = Field(default_factory=list)
+
+
+class ProvisionWorkspaceRequest(BaseModel):
+    workspace_id: str
+    workspace_ref: str
+    repository_url: str
+    base_branch: str
+    branch_name: str
+    contract: TaskExecutionContract
+    contract_digest: str
+
+
+class CleanupWorkspaceRequest(BaseModel):
+    workspace_id: str
+    workspace_ref: str
+    repository_url: str
+    contract: TaskExecutionContract
+    contract_digest: str
 
 
 class ExecuteToolRequest(BaseModel):
@@ -315,7 +368,7 @@ class ToolInfo(BaseModel):
 
 @app.get("/health/live")
 async def health():
-    return {"status": "alive", "service": "agent-runtime", "version": "0.4.0"}
+    return {"status": "alive", "service": "agent-runtime", "version": "0.10.0-dev"}
 
 
 @app.get("/v1/tools", response_model=list[ToolInfo])
@@ -333,12 +386,63 @@ async def list_tools():
 
 @app.post("/v1/contexts")
 async def create_context(req: CreateContextRequest):
-    ctx = await runtime.create_context(req.task_id, req.project_id)
+    try:
+        ctx = await runtime.create_context(
+            req.task_id,
+            req.project_id,
+            req.contract,
+            req.contract_digest,
+            req.workspace_ref,
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
     return {
         "task_id": ctx.task_id,
-        "workspace": str(ctx.workspace),
+        "workspace_ref": ctx.workspace_ref,
         "status": ctx.status.value,
     }
+
+
+@app.post("/v1/workspaces/provision")
+async def provision_workspace(req: ProvisionWorkspaceRequest):
+    try:
+        req.contract.assert_digest(req.contract_digest)
+        if req.workspace_ref != f"workspace:{req.workspace_id}":
+            raise ValueError("Workspace reference does not match workspace identity")
+        provisioned = provisioner.provision(
+            req.workspace_id,
+            req.repository_url,
+            req.base_branch,
+            req.branch_name,
+        )
+        await runtime.create_context(
+            req.contract.taskId,
+            req.contract.projectId,
+            req.contract,
+            req.contract_digest,
+            req.workspace_ref,
+            provisioner.resolve_checkout(provisioned.checkout_ref),
+        )
+        return {
+            "workspace_ref": req.workspace_ref,
+            "checkout_ref": provisioned.checkout_ref,
+            "head_sha": provisioned.head_sha,
+            "recovered": provisioned.recovered,
+        }
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.post("/v1/workspaces/cleanup")
+async def cleanup_workspace(req: CleanupWorkspaceRequest):
+    try:
+        req.contract.assert_digest(req.contract_digest)
+        if req.workspace_ref != f"workspace:{req.workspace_id}":
+            raise ValueError("Workspace reference does not match workspace identity")
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    cleaned = provisioner.cleanup(req.workspace_id, req.repository_url)
+    return {"workspace_id": req.workspace_id, "cleaned": cleaned}
 
 
 @app.post("/v1/execute")

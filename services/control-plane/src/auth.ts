@@ -55,7 +55,11 @@ export async function hashPassword(password: string): Promise<string> {
 }
 
 export async function verifyPassword(password: string, stored: string): Promise<boolean> {
-  const [, salt, expectedHash] = stored.split(":");
+  const [algorithm, salt, expectedHash] = stored.split(":");
+  if (algorithm !== "pbkdf2" || !salt || !expectedHash) {
+    return false;
+  }
+
   const hash = await pbkdf2(password, salt);
   return timingSafeEqual(Buffer.from(hash), Buffer.from(expectedHash));
 }

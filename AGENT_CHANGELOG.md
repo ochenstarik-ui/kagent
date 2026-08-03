@@ -56,3 +56,36 @@ Implement persistent project and task lifecycle in Control Plane:
 ### Architecture artifact
 
 - `docs/adr/0003-capability-first-model-routing.md`
+
+## 2026-08-03 — Agent Workspace Cockpit 0.9.0-dev
+
+### Implemented
+
+- Added clean-room workspace, session and diff-review contracts.
+- Added validated Control Plane lifecycle and cockpit APIs.
+- Added migration 003 for durable workspace state.
+- Added the `/workspaces` operational UI.
+- Added lifecycle, concurrency and review-path tests.
+- Reconciled package versions and the roadmap with verified scope.
+
+### Validation
+
+- Contracts typecheck and 7 unit tests passed.
+- Control Plane TypeScript build and 6 unit tests passed.
+- Web typecheck and production build passed; `/workspaces` is registered.
+- Python compileall and repository validation passed.
+- Rust checks were not run because Rust is unavailable in this environment.
+- Real PostgreSQL integration tests were not run; the workspace API still uses
+  the in-memory adapter and this limitation is explicit.
+
+### Next increment
+
+Implement release 0.10 Workspace Provisioner: PostgreSQL persistence, worker
+leases, idempotent Git worktree provisioning, recovery and integration tests.
+## 2026-08-03 — Workspace Provisioner 0.10.0-dev
+
+Implemented persistent Control Plane repositories, canonical task contracts,
+worker leases with expiry recovery, idempotent worker-owned Git worktrees,
+worker-boundary validation, migration 004 and proportional tests. Local Git,
+TypeScript and Python checks pass; real PostgreSQL execution is pending because
+the current environment has no Docker/PostgreSQL executable.

@@ -28,8 +28,17 @@ secret_patterns = [
     re.compile(r"BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY"),
 ]
 
+excluded_parts = {
+    ".git",
+    ".next",
+    "__pycache__",
+    "dist",
+    "node_modules",
+    "target",
+}
+
 for path in root.rglob("*"):
-    if not path.is_file() or ".git" in path.parts:
+    if not path.is_file() or excluded_parts.intersection(path.parts):
         continue
     try:
         content = path.read_text(encoding="utf-8")

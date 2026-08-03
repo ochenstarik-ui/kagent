@@ -1875,3 +1875,22 @@ Usage and Outcome Telemetry
   ↓
 Capability Profile Update
 ```
+
+## 35. Agent Workspace Cockpit refinement
+
+The autonomous coding workspace is represented by a governed AgentWorkspace
+aggregate. It owns lifecycle, task and project identity, branch intent, opaque
+worker reference, execution limits, normalized session metadata and diff review
+comments. Physical Git, terminal, browser and CLI-agent processes remain owned
+by isolated workers and require explicit capabilities.
+
+Required invariants:
+
+1. one active workspace per task;
+2. no direct work on the protected base branch;
+3. default-deny network access;
+4. bounded runtime, file changes and concurrent agents;
+5. verification before completion;
+6. reviewer comments do not grant code-write authority;
+7. no host path or credential exposure through the public API;
+8. all transitions and approvals become audit events in the persistent adapter.

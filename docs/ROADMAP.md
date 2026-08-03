@@ -1,27 +1,68 @@
 # Roadmap
 
-## 0.1 — Foundation Bootstrap ✅
-## 0.2 — Persistent Project and Task Lifecycle ✅
-## 0.3 — Authentication and Policy Foundation ✅
-## 0.4 — Single-Agent Runtime ✅
-## 0.5 — Verified Coding Pipeline ✅
-## 0.6 — Observability ✅
-## 0.7 — Docker Compose ✅
-## 0.8 — Complete ✅
+This roadmap records only verified repository state. A checked item means code
+and proportionate validation exist in this repository.
 
-- [x] Web UI (Next.js dashboard)
-- [x] NATS event streaming
-- [x] Multi-agent orchestration
-- [x] Production deployment guide
-- [x] Integration tests with real PostgreSQL
+## 0.1-0.8 — Existing foundation
 
-## 0.9 — Future
+- [x] Contract-first monorepo foundation
+- [x] Project and task lifecycle foundation
+- [x] Authentication and policy foundation
+- [x] Single-agent runtime foundation
+- [x] Verified coding pipeline foundation
+- [x] Observability and Docker Compose
+- [x] Web dashboard, NATS events and multi-agent orchestrator foundation
 
-- [ ] Agent sandbox hardening (gVisor/Firecracker)
-- [ ] Model evaluation benchmark suite
-- [ ] Cost attribution and billing
+These components still require production hardening described in the threat
+model and must not be treated as a production-ready autonomous platform.
+
+## 0.9 — Agent Workspace Cockpit Foundation
+
+- [x] Workspace, session and diff-review contracts
+- [x] Bounded workspace lifecycle with verification gate
+- [x] Control Plane workspace APIs and cockpit summary
+- [x] Agent concurrency and repository-relative review guards
+- [x] PostgreSQL migration 003_agent_workspaces.sql
+- [x] Responsive /workspaces Web route
+- [x] Contract and Control Plane unit tests
+- [ ] PTY and Chromium processes
+- [ ] CLI agent harness adapters
+
+## 0.10 — Workspace Provisioner
+
+- [x] Idempotent Git worktree create/recover/cleanup
+- [x] Worker leases, heartbeats and restart recovery
+- [x] Persistent Control Plane workspace repository
+- [x] Task-contract enforcement at worker boundary
+- [x] Temporary-repository integration tests
+- [x] Real-PostgreSQL integration test coverage
+- [ ] Real-PostgreSQL integration execution evidence
+
+## 0.11 — Agent Harness and Streaming Sessions
+
+- [ ] Normalized harness protocol for Codex, Claude Code and OpenCode
+- [ ] Policy-gated PTY sessions with restart-safe scrollback
+- [ ] SSE/WebSocket event streaming
+- [ ] Usage and outcome telemetry by session
+
+## 0.12 — Browser and Review Loop
+
+- [ ] Isolated Chromium session per workspace
+- [ ] DOM element selection with bounded HTML/CSS/screenshot artifacts
+- [ ] Diff comment repair workflow
+- [ ] GitHub pull request integration
+
+## 0.13 — Remote and Mobile Operations
+
+- [ ] SSH/registered remote workers
+- [ ] Approval, pause, resume and kill switch from mobile
+- [ ] Notification delivery and unread state
+
+## 1.0 — Production hardening
+
+- [ ] gVisor or Firecracker sandbox profile
+- [ ] Credential vault and mTLS service identity
+- [ ] Hash-chained audit log
 - [ ] Multi-tenancy isolation
-- [ ] Horizontal scaling (K8s)
-- [ ] gRPC streaming for agent events
-- [ ] Plugin system for custom tools
-- [ ] Android client
+- [ ] Backup/restore and rollback tests
+- [ ] SBOM, signing, load tests and external security review

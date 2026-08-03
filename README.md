@@ -4,9 +4,9 @@ KAgent — самостоятельная self-hosted мультиагентна
 
 ## Статус
 
-Текущая версия: **0.1.0-dev — Foundation Bootstrap**.
+Текущая версия: **0.10.0-dev — Workspace Provisioner Foundation**.
 
-Первый инкремент создаёт чистую основу проекта:
+Текущая линия разработки включает foundation-компоненты и Agent Workspace Cockpit:
 
 - monorepo;
 - versioned contracts;
@@ -65,3 +65,14 @@ cargo run --manifest-path services/gateway/Cargo.toml
 ## Лицензия
 
 Лицензия пока не выбрана. До добавления `LICENSE` проект не предоставляется для свободного переиспользования.
+
+## Workspace Provisioner 0.10
+
+Release 0.10 persists projects, tasks and workspaces in PostgreSQL, issues
+immutable task contracts, manages restart-safe worker leases and provisions
+idempotent worker-owned Git worktrees behind opaque references. The existing
+/workspaces cockpit remains the operational UI.
+
+See [Agent Workspace Cockpit](docs/AGENT_WORKSPACE_COCKPIT.md) for verified scope
+and limitations. PTY, browser and agent-harness streaming remain planned for
+0.11+. Production hardening in the threat model is still required.

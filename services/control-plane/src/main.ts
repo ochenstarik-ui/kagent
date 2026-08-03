@@ -4,6 +4,10 @@ import Fastify from "fastify";
 import { Pool } from "pg";
 import { registerRoutes } from "./routes.js";
 import { registerAuthRoutes } from "./auth-routes.js";
+import { registerWorkspaceRoutes } from "./workspace-routes.js";
+import { KAGENT_VERSION } from "./version.js";
+import { getStore } from "./db.js";
+import { PostgresWorkspaceRepository } from "./postgres-workspace-repository.js";
 
 const app = Fastify({
   logger: {
@@ -20,9 +24,14 @@ const pool = new Pool({
   max: 10,
 });
 
+// Persistent repositories
+const controlPlaneStore = getStore();
+const workspaceRepository = new PostgresWorkspaceRepository(pool);
+
 // Register API routes
-await registerRoutes(app);
+await registerRoutes(app, controlPlaneStore);
 await registerAuthRoutes(app, pool);
+await registerWorkspaceRoutes(app, workspaceRepository, controlPlaneStore);
 
 // Start
 const port = parseInt(process.env["CONTROL_PLANE_PORT"] ?? "8100", 10);
@@ -37,7 +46,7 @@ try {
       message: "server_started",
       host,
       port,
-      version: "0.2.0",
+      version: KAGENT_VERSION,
     })
   );
 } catch (err) {
@@ -49,6 +58,8 @@ try {
 async function shutdown(signal: string) {
   console.log(JSON.stringify({ level: "info", service: "control-plane", message: "shutdown", signal }));
   await app.close();
+  await pool.end();
+  await controlPlaneStore.close();
   process.exit(0);
 }
 
