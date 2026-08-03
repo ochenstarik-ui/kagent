@@ -1,7 +1,7 @@
 {
   "name": "kagent",
   "private": true,
-  "version": "0.9.0-dev",
+  "version": "0.10.0-dev",
   "packageManager": "pnpm@10.14.0",
   "engines": {
     "node": ">=22.0.0"

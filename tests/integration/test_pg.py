@@ -7,6 +7,7 @@ Run: DATABASE_URL=postgres://kagent:change-me-locally@localhost:5432/kagent pyth
 import os
 import sys
 import asyncio
+import json
 from pathlib import Path
 
 import asyncpg
@@ -32,7 +33,11 @@ async def test_tables_exist():
     """)
     table_names = {r["table_name"] for r in tables}
     
-    required = {"projects", "tasks", "audit_events", "accounts", "sessions", "project_members"}
+    required = {
+        "projects", "tasks", "audit_events", "accounts", "sessions",
+        "project_members", "agent_workspaces", "workspace_sessions",
+        "diff_review_comments", "workspace_leases", "workspace_provisioning",
+    }
     missing = required - table_names
     assert not missing, f"Missing tables: {missing}"
     print(f"TEST 2 PASS: All {len(required)} tables exist — {sorted(table_names)}")
@@ -235,6 +240,82 @@ async def test_concurrent():
     await conn2.close()
 
 
+
+
+async def test_workspace_provisioner_persistence():
+    """Test 10: workspace contracts and lease recovery persist in PostgreSQL."""
+    conn = await asyncpg.connect(DATABASE_URL)
+    contract = {
+        "schemaVersion": "1",
+        "projectId": "test-proj-1",
+        "taskId": "test-task-1",
+        "objective": "Provision a persistent workspace",
+        "contextRefs": [],
+        "allowedPaths": ["**"],
+        "requiredChecks": [],
+        "limits": {
+            "maxRuntimeMinutes": 120,
+            "maxChangedFiles": 30,
+            "maxConcurrentAgents": 1,
+            "networkAccess": "denied",
+        },
+        "issuedAt": "2026-08-03T00:00:00.000Z",
+    }
+    await conn.execute("""
+        INSERT INTO agent_workspaces (
+            id, project_id, task_id, repository_url, branch_name,
+            workspace_ref, task_contract, contract_digest
+        ) VALUES (
+            'test-workspace-1', 'test-proj-1', 'test-task-1',
+            'https://github.com/example/project.git', 'agent/test-workspace',
+            'workspace:test-workspace-1', $1::jsonb, $2
+        )
+    """, json.dumps(contract), "0" * 64)
+    first = await conn.fetchrow("""
+        INSERT INTO workspace_leases (
+            workspace_id, worker_id, token_hash, generation,
+            acquired_at, heartbeat_at, expires_at
+        ) VALUES (
+            'test-workspace-1', 'worker-a', $1, 1,
+            now() - interval '2 minutes',
+            now() - interval '2 minutes',
+            now() - interval '1 minute'
+        ) RETURNING *
+    """, "1" * 64)
+    assert first["generation"] == 1
+
+    recovered = await conn.fetchrow("""
+        INSERT INTO workspace_leases (
+            workspace_id, worker_id, token_hash, generation,
+            acquired_at, heartbeat_at, expires_at
+        ) VALUES (
+            'test-workspace-1', 'worker-b', $1, 2,
+            now(), now(), now() + interval '1 minute'
+        )
+        ON CONFLICT (workspace_id) DO UPDATE SET
+            worker_id = EXCLUDED.worker_id,
+            token_hash = EXCLUDED.token_hash,
+            generation = workspace_leases.generation + 1,
+            acquired_at = EXCLUDED.acquired_at,
+            heartbeat_at = EXCLUDED.heartbeat_at,
+            expires_at = EXCLUDED.expires_at
+        RETURNING *
+    """, "2" * 64)
+    assert recovered["worker_id"] == "worker-b"
+    assert recovered["generation"] == 2
+
+    provisioned = await conn.fetchrow("""
+        INSERT INTO workspace_provisioning (
+            workspace_id, worker_id, checkout_ref, head_sha, status
+        ) VALUES (
+            'test-workspace-1', 'worker-b', 'checkout:test-workspace-1',
+            $1, 'ready'
+        ) RETURNING *
+    """, "a" * 40)
+    assert provisioned["status"] == "ready"
+    print("TEST 10 PASS: Persistent contract + expired lease recovery")
+    await conn.close()
+
 async def cleanup():
     """Remove test data."""
     conn = await asyncpg.connect(DATABASE_URL)
@@ -260,6 +341,7 @@ async def main():
         test_foreign_keys,
         test_indexes,
         test_concurrent,
+        test_workspace_provisioner_persistence,
     ]
     
     passed = 0

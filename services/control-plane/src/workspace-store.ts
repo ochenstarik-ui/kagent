@@ -1,10 +1,14 @@
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { nanoid } from "nanoid";
+import { canonicalJson } from "./canonical-json.js";
 import type {
   CreateReviewCommentInput,
   CreateSessionInput,
   CreateWorkspaceInput,
   DiffReviewComment,
   Workspace,
+  WorkspaceLeaseGrant,
+  ProvisioningRecord,
   WorkspaceLimits,
   WorkspaceSession,
   WorkspaceStatus
@@ -48,6 +52,8 @@ function sanitizeRepositoryUrl(value: string): string {
     }
     parsed.username = "";
     parsed.password = "";
+    parsed.search = "";
+    parsed.hash = "";
     return parsed.toString();
   }
 
@@ -59,6 +65,15 @@ export class WorkspaceStore {
   private workspaces = new Map<string, Workspace>();
   private sessions = new Map<string, WorkspaceSession>();
   private comments = new Map<string, DiffReviewComment>();
+  private provisioning = new Map<string, ProvisioningRecord>();
+  private leases = new Map<string, {
+    workerId: string;
+    tokenHash: string;
+    generation: number;
+    acquiredAt: string;
+    heartbeatAt: string;
+    expiresAt: string;
+  }>();
 
   listWorkspaces(filters: { projectId?: string; taskId?: string } = {}): Workspace[] {
     return [...this.workspaces.values()].filter(workspace =>
@@ -76,7 +91,8 @@ export class WorkspaceStore {
     taskId: string,
     repositoryUrl: string,
     taskTitle: string,
-    input: CreateWorkspaceInput = {}
+    input: CreateWorkspaceInput = {},
+    taskContext: { objective?: string; capability?: string; contextRefs?: string[] } = {}
   ): Workspace {
     const existing = this.listWorkspaces({ taskId }).find(workspace =>
       !["completed", "failed", "cancelled"].includes(workspace.status)
@@ -87,6 +103,27 @@ export class WorkspaceStore {
 
     const id = nanoid(12);
     const now = new Date().toISOString();
+    const limits = { ...DEFAULT_LIMITS, ...input.limits };
+    this.validateLimits(limits);
+    const allowedPaths = this.validateRelativeList(input.allowedPaths ?? ["**"]);
+    const requiredChecks = this.validateChecks(input.requiredChecks ?? []);
+    const taskContract = {
+      schemaVersion: "1" as const,
+      projectId,
+      taskId,
+      objective: taskContext.objective?.trim() || taskTitle.trim(),
+      ...(taskContext.capability?.trim()
+        ? { capability: taskContext.capability.trim() }
+        : {}),
+      contextRefs: [...(taskContext.contextRefs ?? [])],
+      allowedPaths,
+      requiredChecks,
+      limits,
+      issuedAt: now
+    };
+    const contractDigest = createHash("sha256")
+      .update(canonicalJson(taskContract))
+      .digest("hex");
     const workspace: Workspace = {
       id,
       projectId,
@@ -94,19 +131,19 @@ export class WorkspaceStore {
       status: "provisioning",
       repositoryUrl: sanitizeRepositoryUrl(repositoryUrl),
       baseBranch: input.baseBranch?.trim() || "main",
-      branchName: `agent/${safeBranchPart(taskTitle)}-${taskId.slice(0, 8)}`,
-      workspaceRef: `workspace:${id}`,
-      limits: { ...DEFAULT_LIMITS, ...input.limits },
+      branchName: "agent/" + safeBranchPart(taskTitle) + "-" + taskId.slice(0, 8),
+      workspaceRef: "workspace:" + id,
+      limits,
       changedFiles: 0,
+      taskContract,
+      contractDigest,
       createdAt: now,
       updatedAt: now
     };
 
-    this.validateLimits(workspace.limits);
     this.workspaces.set(id, workspace);
     return workspace;
   }
-
   transitionWorkspace(
     id: string,
     status: WorkspaceStatus
@@ -125,6 +162,125 @@ export class WorkspaceStore {
     return { workspace };
   }
 
+  acquireLease(
+    workspaceId: string,
+    workerId: string,
+    ttlSeconds = 60,
+    now = new Date()
+  ): WorkspaceLeaseGrant {
+    const workspace = this.workspaces.get(workspaceId);
+    if (!workspace) throw new Error("Workspace not found");
+    this.validateLeaseInput(workerId, ttlSeconds);
+
+    const existing = this.leases.get(workspaceId);
+    if (existing && new Date(existing.expiresAt).getTime() > now.getTime()) {
+      throw new Error("Workspace already has an active lease");
+    }
+
+    const leaseToken = randomBytes(32).toString("base64url");
+    const timestamp = now.toISOString();
+    const generation = (existing?.generation ?? 0) + 1;
+    const lease = {
+      workerId: workerId.trim(),
+      tokenHash: createHash("sha256").update(leaseToken).digest("hex"),
+      generation,
+      acquiredAt: timestamp,
+      heartbeatAt: timestamp,
+      expiresAt: new Date(now.getTime() + ttlSeconds * 1000).toISOString()
+    };
+    this.leases.set(workspaceId, lease);
+    return {
+      workspaceId,
+      workerId: lease.workerId,
+      generation,
+      acquiredAt: timestamp,
+      heartbeatAt: timestamp,
+      expiresAt: lease.expiresAt,
+      leaseToken,
+      taskContract: workspace.taskContract,
+      contractDigest: workspace.contractDigest
+    };
+  }
+
+  heartbeatLease(
+    workspaceId: string,
+    workerId: string,
+    leaseToken: string,
+    ttlSeconds = 60,
+    now = new Date()
+  ) {
+    const lease = this.requireLease(workspaceId, workerId, leaseToken, now);
+    this.validateLeaseInput(workerId, ttlSeconds);
+    lease.heartbeatAt = now.toISOString();
+    lease.expiresAt = new Date(now.getTime() + ttlSeconds * 1000).toISOString();
+    return {
+      workspaceId,
+      workerId: lease.workerId,
+      generation: lease.generation,
+      acquiredAt: lease.acquiredAt,
+      heartbeatAt: lease.heartbeatAt,
+      expiresAt: lease.expiresAt
+    };
+  }
+
+  releaseLease(
+    workspaceId: string,
+    workerId: string,
+    leaseToken: string,
+    now = new Date()
+  ): void {
+    this.requireLease(workspaceId, workerId, leaseToken, now);
+    this.leases.delete(workspaceId);
+  }
+
+  recordProvisioning(
+    workspaceId: string,
+    workerId: string,
+    leaseToken: string,
+    input: {
+      checkoutRef: string;
+      headSha?: string;
+      status: "ready" | "failed" | "cleaned";
+      lastError?: string;
+    },
+    now = new Date()
+  ): ProvisioningRecord {
+    this.requireLease(workspaceId, workerId, leaseToken, now);
+    const workspace = this.workspaces.get(workspaceId);
+    if (!workspace) throw new Error("Workspace not found");
+    if (input.checkoutRef !== "checkout:" + workspaceId) {
+      throw new Error("checkoutRef does not match workspace identity");
+    }
+    if (
+      !["ready", "failed", "cleaned"].includes(input.status) ||
+      (input.status === "ready" && !/^[0-9a-f]{40,64}$/u.test(input.headSha ?? ""))
+    ) {
+      throw new Error("Provisioning result is invalid");
+    }
+    if ((input.lastError?.length ?? 0) > 4000) {
+      throw new Error("Provisioning error exceeds 4000 characters");
+    }
+
+    const record: ProvisioningRecord = {
+      workspaceId,
+      workerId,
+      checkoutRef: input.checkoutRef,
+      ...(input.headSha ? { headSha: input.headSha } : {}),
+      status: input.status,
+      ...(input.lastError ? { lastError: input.lastError } : {}),
+      updatedAt: now.toISOString()
+    };
+    this.provisioning.set(workspaceId, record);
+    if (input.status === "ready" && workspace.status === "provisioning") {
+      workspace.status = "ready";
+    } else if (input.status === "failed" && !["completed", "failed", "cancelled"].includes(workspace.status)) {
+      workspace.status = "failed";
+    } else if (input.status === "cleaned" && !["completed", "failed", "cancelled"].includes(workspace.status)) {
+      workspace.status = "cancelled";
+    }
+    workspace.updatedAt = now.toISOString();
+    return record;
+  }
   listSessions(workspaceId: string): WorkspaceSession[] {
     return [...this.sessions.values()].filter(session => session.workspaceId === workspaceId);
   }
@@ -213,6 +369,7 @@ export class WorkspaceStore {
     const comments = this.listComments(workspaceId);
     return {
       workspace,
+      provisioning: this.provisioning.get(workspaceId),
       sessions,
       review: {
         openComments: comments.filter(comment => comment.status === "open").length,
@@ -226,6 +383,60 @@ export class WorkspaceStore {
     };
   }
 
+  private validateRelativeList(paths: string[]): string[] {
+    if (paths.length < 1 || paths.length > 128) {
+      throw new Error("allowedPaths must contain between 1 and 128 entries");
+    }
+    return paths.map(path => {
+      const value = path.trim().replaceAll("\\", "/");
+      if (!value || value.startsWith("/") || /(^|\/)\.\.?($|\/)/u.test(value)) {
+        throw new Error("allowedPaths must be repository-relative");
+      }
+      return value;
+    });
+  }
+
+  private validateChecks(checks: string[]): string[] {
+    if (checks.length > 32) throw new Error("requiredChecks cannot exceed 32 entries");
+    return checks.map(check => {
+      const value = check.trim();
+      if (!value || value.length > 256 || /[\r\n\0]/u.test(value)) {
+        throw new Error("requiredChecks contains an invalid command");
+      }
+      return value;
+    });
+  }
+
+  private validateLeaseInput(workerId: string, ttlSeconds: number): void {
+    if (!/^[a-zA-Z0-9._:-]{1,128}$/u.test(workerId.trim())) {
+      throw new Error("workerId is invalid");
+    }
+    if (!Number.isInteger(ttlSeconds) || ttlSeconds < 15 || ttlSeconds > 300) {
+      throw new Error("ttlSeconds must be between 15 and 300");
+    }
+  }
+
+  private requireLease(
+    workspaceId: string,
+    workerId: string,
+    leaseToken: string,
+    now: Date
+  ) {
+    const lease = this.leases.get(workspaceId);
+    if (!lease || new Date(lease.expiresAt).getTime() <= now.getTime()) {
+      throw new Error("Workspace lease is missing or expired");
+    }
+    const actual = Buffer.from(createHash("sha256").update(leaseToken).digest("hex"));
+    const expected = Buffer.from(lease.tokenHash);
+    if (
+      workerId !== lease.workerId ||
+      actual.length !== expected.length ||
+      !timingSafeEqual(actual, expected)
+    ) {
+      throw new Error("Workspace lease credentials are invalid");
+    }
+    return lease;
+  }
   private validateLimits(limits: WorkspaceLimits): void {
     if (limits.maxRuntimeMinutes < 1 || limits.maxRuntimeMinutes > 1440) {
       throw new Error("maxRuntimeMinutes must be between 1 and 1440");

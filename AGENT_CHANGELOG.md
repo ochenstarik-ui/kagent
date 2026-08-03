@@ -82,3 +82,10 @@ Implement persistent project and task lifecycle in Control Plane:
 
 Implement release 0.10 Workspace Provisioner: PostgreSQL persistence, worker
 leases, idempotent Git worktree provisioning, recovery and integration tests.
+## 2026-08-03 — Workspace Provisioner 0.10.0-dev
+
+Implemented persistent Control Plane repositories, canonical task contracts,
+worker leases with expiry recovery, idempotent worker-owned Git worktrees,
+worker-boundary validation, migration 004 and proportional tests. Local Git,
+TypeScript and Python checks pass; real PostgreSQL execution is pending because
+the current environment has no Docker/PostgreSQL executable.

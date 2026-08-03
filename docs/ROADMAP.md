@@ -25,18 +25,18 @@ model and must not be treated as a production-ready autonomous platform.
 - [x] PostgreSQL migration 003_agent_workspaces.sql
 - [x] Responsive /workspaces Web route
 - [x] Contract and Control Plane unit tests
-- [ ] PostgreSQL-backed workspace repository
-- [ ] Physical Git worktree provisioning
 - [ ] PTY and Chromium processes
 - [ ] CLI agent harness adapters
 
 ## 0.10 — Workspace Provisioner
 
-- [ ] Idempotent Git worktree create/recover/cleanup
-- [ ] Worker leases, heartbeats and restart recovery
-- [ ] Persistent Control Plane workspace repository
-- [ ] Task-contract enforcement at worker boundary
-- [ ] Temporary-repository and real-PostgreSQL integration tests
+- [x] Idempotent Git worktree create/recover/cleanup
+- [x] Worker leases, heartbeats and restart recovery
+- [x] Persistent Control Plane workspace repository
+- [x] Task-contract enforcement at worker boundary
+- [x] Temporary-repository integration tests
+- [x] Real-PostgreSQL integration test coverage
+- [ ] Real-PostgreSQL integration execution evidence
 
 ## 0.11 — Agent Harness and Streaming Sessions
 

@@ -4,6 +4,39 @@
 
 Формат основан на Keep a Changelog. Проект следует Semantic Versioning после первого стабильного релиза.
 
+## [0.10.0-dev] - 2026-08-03
+
+### Added
+
+- Persistent PostgreSQL repositories for projects, tasks and agent workspaces.
+- Immutable canonical task contracts with SHA-256 worker-boundary validation.
+- Worker lease acquire/heartbeat/release, expired-lease generation recovery and
+  lease-authenticated provisioning-result persistence.
+- Idempotent Git mirror/worktree provisioning, recovery and bounded cleanup.
+- Migration `004_workspace_provisioner.sql`.
+- Control Plane route tests, task-contract tests, temporary Git integration tests
+  and PostgreSQL lease-recovery integration coverage.
+
+### Changed
+
+- Control Plane production wiring now uses PostgreSQL instead of process-local
+  project/task/workspace state.
+- Workspace creation requires an approved or in-progress task.
+- Agent Runtime version is 0.10.0-dev and returns opaque workspace references.
+
+### Security
+
+- Lease tokens are persisted only as SHA-256 hashes.
+- Git credentials and host checkout paths are not returned through APIs.
+- File tools enforce immutable repository-relative task-contract scopes.
+
+### Validation
+
+- TypeScript build and unit tests, Python temporary-repository tests and
+  compileall pass.
+- Real PostgreSQL execution remains unverified in this environment because
+  Docker/PostgreSQL is unavailable.
+
 ## [Unreleased]
 
 ### Added

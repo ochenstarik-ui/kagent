@@ -59,3 +59,13 @@ These are explicit blockers for production deployment.
 | Review path traversal | Repository-relative path validation and SQL check | Diff parser integration |
 | Completion without evidence | Verifying state required before completed | Evidence attachment gate |
 | Arbitrary PTY or browser access | No process execution in 0.9 Control Plane | Sandboxed session service |
+
+## Workspace provisioner threats (0.10)
+
+| Threat | Control in 0.10 | Remaining work |
+|---|---|---|
+| Stale worker continues after restart | Expiring hash-only lease tokens and monotonic generation | Service identity/mTLS |
+| Task payload changes after approval | Canonical immutable contract digest validated by worker | Approval signature |
+| Checkout escapes worker root | Safe identifiers, resolved root containment and opaque refs | OS sandbox profile |
+| Git prompts or argument injection | Argument arrays, prompt disabled, branch validation and timeouts | Egress proxy |
+| Cross-task file access | Contract path scope plus resolved workspace containment | Full shell syscall mediation |

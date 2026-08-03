@@ -39,6 +39,19 @@ export interface WorkspaceLimits {
   readonly networkAccess: "denied" | "allowlisted";
 }
 
+export interface TaskExecutionContract {
+  readonly schemaVersion: "1";
+  readonly projectId: ProjectId;
+  readonly taskId: TaskId;
+  readonly objective: string;
+  readonly capability?: string;
+  readonly contextRefs: readonly string[];
+  readonly allowedPaths: readonly string[];
+  readonly requiredChecks: readonly string[];
+  readonly limits: WorkspaceLimits;
+  readonly issuedAt: string;
+}
+
 export interface AgentWorkspace {
   readonly id: WorkspaceId;
   readonly projectId: ProjectId;
@@ -51,6 +64,8 @@ export interface AgentWorkspace {
   readonly workspaceRef: string;
   readonly limits: WorkspaceLimits;
   readonly changedFiles: number;
+  readonly taskContract: TaskExecutionContract;
+  readonly contractDigest: string;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -64,6 +79,15 @@ export interface WorkspaceSession {
   readonly agentHarness?: string;
   readonly createdAt: string;
   readonly updatedAt: string;
+}
+
+export interface WorkspaceLease {
+  readonly workspaceId: WorkspaceId;
+  readonly workerId: string;
+  readonly generation: number;
+  readonly acquiredAt: string;
+  readonly heartbeatAt: string;
+  readonly expiresAt: string;
 }
 
 export interface DiffReviewComment {

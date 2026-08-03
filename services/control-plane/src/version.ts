@@ -1,1 +1,1 @@
-export const KAGENT_VERSION = "0.9.0-dev";
+export const KAGENT_VERSION = "0.10.0-dev";

@@ -115,4 +115,68 @@ describe("WorkspaceStore", () => {
 
     expect(workspace.repositoryUrl).toBe("https://github.com/example/project.git");
   });
-});
+
+  it("issues immutable task contracts and recovers expired worker leases", () => {
+    const store = new WorkspaceStore();
+    const workspace = store.createWorkspace(
+      "project-123",
+      "task-lease",
+      "https://github.com/example/project",
+      "Lease recovery",
+      {
+        allowedPaths: ["src/**"],
+        requiredChecks: ["pnpm test"]
+      },
+      {
+        objective: "Recover work after a worker restart",
+        capability: "coding",
+        contextRefs: ["spec:workspace-lease"]
+      }
+    );
+
+    expect(workspace.contractDigest).toMatch(/^[0-9a-f]{64}$/u);
+    expect(workspace.taskContract.allowedPaths).toEqual(["src/**"]);
+    expect(workspace.taskContract.requiredChecks).toEqual(["pnpm test"]);
+
+    const first = store.acquireLease(
+      workspace.id,
+      "worker-a",
+      30,
+      new Date("2026-08-03T00:00:00.000Z")
+    );
+    expect(first.generation).toBe(1);
+    expect(() =>
+      store.acquireLease(
+        workspace.id,
+        "worker-b",
+        30,
+        new Date("2026-08-03T00:00:10.000Z")
+      )
+    ).toThrow(/active lease/u);
+
+    const recovered = store.acquireLease(
+      workspace.id,
+      "worker-b",
+      30,
+      new Date("2026-08-03T00:00:31.000Z")
+    );
+    expect(recovered.generation).toBe(2);
+    expect(() =>
+      store.heartbeatLease(
+        workspace.id,
+        "worker-a",
+        first.leaseToken,
+        30,
+        new Date("2026-08-03T00:00:32.000Z")
+      )
+    ).toThrow(/invalid/u);
+    expect(
+      store.heartbeatLease(
+        workspace.id,
+        "worker-b",
+        recovered.leaseToken,
+        30,
+        new Date("2026-08-03T00:00:32.000Z")
+      ).generation
+    ).toBe(2);
+  });});

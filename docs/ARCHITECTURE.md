@@ -114,12 +114,13 @@ The canonical efficiency metric is cost per successful task, not price per call.
 
 ## 9. Agent Workspace Control Plane
 
-Release 0.9 introduces a governed workspace aggregate between tasks and the
-execution plane. The Control Plane owns lifecycle, limits, session metadata and
-review state. Workers own physical Git worktrees, PTY processes and Chromium
-instances. The Control Plane exposes only an opaque workspaceRef, never a host
-filesystem path.
+Release 0.10 places a persistent workspace aggregate between approved tasks and
+the execution plane. PostgreSQL owns lifecycle, immutable task contracts, lease
+generations, session metadata, review state and opaque provisioning evidence.
+Workers own physical Git mirrors/worktrees and map checkoutRef values under one
+configured root; host filesystem paths are never returned.
 
-The 0.9 adapter is intentionally in memory. Migration 003 defines the durable
-schema; the PostgreSQL repository and worker provisioner are required in 0.10.
-See ADR-0004 and AGENT_WORKSPACE_COCKPIT.md.
+Worker leases expire and can be recovered after restart. The Agent Runtime
+revalidates the canonical task-contract digest before provisioning or context
+creation. PTY and Chromium processes remain later-release work. See ADR-0004,
+ADR-0005 and AGENT_WORKSPACE_COCKPIT.md.

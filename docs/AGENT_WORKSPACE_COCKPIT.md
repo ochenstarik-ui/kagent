@@ -1,64 +1,82 @@
 # Agent Workspace Cockpit
 
-**Release:** 0.9.0-dev
-**Status:** control-plane foundation implemented
-**Decision source:** ADR-0004
+**Release:** 0.10.0-dev
+**Status:** workspace provisioner foundation implemented
+**Decision sources:** ADR-0004 and ADR-0005
 
 ## Purpose
 
-The Agent Workspace Cockpit adds an agent-first operational layer to KAgent
-without turning the platform into an unrestricted local shell. A workspace is a
-governed execution boundary attached to one project and one task.
+The cockpit is a governed execution boundary attached to one project and one
+approved task. Release 0.10 turns the 0.9 in-memory aggregate into a persistent,
+restart-aware worker workflow without exposing host filesystem paths.
 
-## Implemented in 0.9
+## Implemented in 0.10
 
-- Versioned contracts for workspaces, sessions and diff review comments.
-- A workspace lifecycle that requires verification before completion.
-- Default-deny network policy and bounded runtime, file and concurrency limits.
-- Control Plane endpoints for workspace creation, transitions, session metadata,
-  line-level review comments and cockpit summaries.
-- PostgreSQL migration 003_agent_workspaces.sql.
-- A responsive /workspaces dashboard.
-- Unit tests for lifecycle, concurrency limits and review path validation.
+- PostgreSQL repositories for projects, tasks, workspaces, sessions and review
+  comments; the Control Plane now wires them by default.
+- Immutable task contracts with canonical SHA-256 digests, repository-relative
+  path scopes, required checks and bounded resource/network policy.
+- Worker leases with opaque one-time tokens, hash-only persistence, heartbeat,
+  expiry, generation counters, release and expired-lease takeover.
+- Idempotent worker-owned Git mirror/worktree create, recover and bounded cleanup.
+- Agent Runtime contract validation before context creation and file-tool path
+  enforcement.
+- Migration 004 for task contracts, leases and opaque provisioning records.
+- Route/unit tests plus a real temporary-Git-repository integration test.
+- PostgreSQL integration coverage for schema, contract persistence and lease
+  recovery in tests/integration/test_pg.py.
 
-## API
+## Control Plane API
 
 | Method | Route | Purpose |
 |---|---|---|
-| GET | /v1/workspaces | List workspaces by project or task |
-| POST | /v1/tasks/:taskId/workspace | Create a governed workspace record |
-| GET | /v1/workspaces/:id/cockpit | Read the operational cockpit snapshot |
+| GET | /v1/workspaces | List persistent workspaces |
+| POST | /v1/tasks/:taskId/workspace | Create a workspace for an approved task |
+| GET | /v1/workspaces/:id/cockpit | Read the operational snapshot |
 | POST | /v1/workspaces/:id/transition | Apply a validated lifecycle transition |
+| POST | /v1/workspaces/:id/lease | Acquire or recover an expired worker lease |
+| POST | /v1/workspaces/:id/heartbeat | Renew a matching active lease |
+| POST | /v1/workspaces/:id/lease/release | Release a matching active lease |
+| POST | /v1/workspaces/:id/provisioning | Persist a lease-authenticated provisioning result |
 | GET/POST | /v1/workspaces/:id/sessions | List or register session metadata |
 | GET/POST | /v1/workspaces/:id/review-comments | List or add diff comments |
 | POST | /v1/workspaces/:id/review-comments/:commentId/resolve | Resolve a comment |
 
+## Agent Runtime API
+
+| Method | Route | Purpose |
+|---|---|---|
+| POST | /v1/workspaces/provision | Validate a task contract and create/recover a worktree |
+| POST | /v1/workspaces/cleanup | Remove a bounded worker-owned worktree |
+| POST | /v1/contexts | Create a contract-bound runtime context |
+
+Runtime responses return workspaceRef and checkoutRef values, never host paths.
+
 ## Security invariants
 
-1. Host filesystem paths are never returned; workspaceRef is opaque.
-2. Repository URL credentials are stripped before state is returned.
-3. Network access defaults to denied and may only become allowlisted.
-4. An active task may have only one active workspace.
-5. Agent session count cannot exceed the task contract limit.
-6. Review paths must be repository-relative.
-7. A running workspace cannot become completed without verification.
-8. Terminal, browser and CLI execution must remain worker-owned and policy-gated.
+1. Only approved or already in-progress tasks may create a workspace.
+2. Task identity and canonical contract digest must match at the worker boundary.
+3. Network access remains default-deny in the immutable contract.
+4. Lease tokens are returned only when acquired and stored only as SHA-256 hashes.
+5. A live lease cannot be stolen; an expired lease increments generation on recovery.
+6. Git subprocesses use argument arrays, disabled terminal prompting and bounded timeouts.
+7. Checkout cleanup resolves under the configured worker root before removal.
+8. File tools reject paths outside allowedPaths or paths containing traversal.
+9. Completion still requires the verifying lifecycle state.
+10. PTY, Chromium and CLI harness processes remain outside this release.
 
-## Explicit limitations
+## Validation status
 
-The 0.9 Control Plane stores runtime state in memory even though the persistent
-schema is supplied. It does not yet create a physical Git worktree, PTY, browser
-or CLI-agent process. The Web cockpit displays real API state but does not yet
-stream worker output.
+- Control Plane and contract tests pass locally.
+- Temporary Git provision/create/recover/cleanup tests pass against the installed
+  Git executable.
+- Python compileall passes.
+- The real PostgreSQL test is implemented but was not executed in the current
+  environment because Docker/PostgreSQL is unavailable.
 
-These capabilities must not be described as implemented until the 0.10 worker
-provisioner and persistence adapters are complete.
+## Next increment: 0.11
 
-## Next increment: 0.10
-
-- PostgreSQL repository for workspace state.
-- Worker lease and heartbeat protocol.
-- Safe Git worktree provisioning and cleanup.
-- Recovery after Control Plane or worker restart.
-- Task-contract enforcement at the worker boundary.
-- Integration tests using a temporary Git repository and real PostgreSQL.
+- Normalized Codex, Claude Code and OpenCode harness protocol.
+- Policy-gated PTY with restart-safe scrollback.
+- SSE/WebSocket session streaming.
+- Usage and outcome telemetry by session.

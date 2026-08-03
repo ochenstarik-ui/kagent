@@ -85,7 +85,7 @@ export default function WorkspacesPage() {
       <header className="workspace-header">
         <div>
           <Link className="workspace-back" href="/">Back to dashboard</Link>
-          <p className="workspace-eyebrow">KAgent 0.9 / Agent Workspace Cockpit</p>
+          <p className="workspace-eyebrow">KAgent 0.10 / Workspace Provisioner</p>
           <h1>Agent workspaces</h1>
           <p className="workspace-subtitle">
             Isolated branches, governed sessions, budgets and review in one operational view.
