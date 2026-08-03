@@ -7,14 +7,13 @@ use axum::{
     routing::get,
 };
 use http_body_util::BodyExt;
-use hyper::body::Incoming;
 use hyper_util::{
-    client::legacy::Client,
+    client::legacy::{Client, connect::HttpConnector},
     rt::{TokioExecutor, TokioTimer},
 };
 use serde::Serialize;
-use std::{collections::HashMap, env, net::SocketAddr, str::FromStr, sync::Arc, time::Duration};
-use tokio::{net::TcpListener, sync::Mutex, time::Instant};
+use std::{env, net::SocketAddr, str::FromStr, sync::Arc, time::Duration};
+use tokio::net::TcpListener;
 use tower_http::{
     cors::CorsLayer, limit::RequestBodyLimitLayer, request_id::MakeRequestUuid,
     set_header::SetResponseHeaderLayer, trace::TraceLayer,
@@ -23,49 +22,10 @@ use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
 
-// ── Rate Limiter ──────────────────────────
-
-struct RateLimiter {
-    window: Duration,
-    max_requests: u32,
-    clients: Arc<Mutex<HashMap<String, (Instant, u32)>>>,
-}
-
-impl RateLimiter {
-    fn new(window_secs: u64, max_requests: u32) -> Self {
-        Self {
-            window: Duration::from_secs(window_secs),
-            max_requests,
-            clients: Arc::new(Mutex::new(HashMap::new())),
-        }
-    }
-
-    async fn check(&self, client_ip: &str) -> bool {
-        let mut guard = self.clients.lock().await;
-        let now = Instant::now();
-
-        if let Some((start, count)) = guard.get_mut(client_ip) {
-            if now.duration_since(*start) > self.window {
-                *start = now;
-                *count = 1;
-                return true;
-            }
-            if *count >= self.max_requests {
-                return false;
-            }
-            *count += 1;
-            true
-        } else {
-            guard.insert(client_ip.to_string(), (now, 1));
-            true
-        }
-    }
-}
-
 // ── Application State ─────────────────────
 
 struct AppState {
-    client: Client<TokioExecutor, Incoming>,
+    client: Client<HttpConnector, Body>,
     control_plane_url: String,
     reasoning_engine_url: String,
     request_limit_bytes: usize,
@@ -81,7 +41,7 @@ struct HealthResponse {
     request_id: String,
 }
 
-async fn live(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Json<HealthResponse> {
+async fn live(State(_state): State<Arc<AppState>>, headers: HeaderMap) -> Json<HealthResponse> {
     let request_id = get_request_id(&headers);
     Json(HealthResponse {
         status: "ok",
@@ -120,7 +80,8 @@ async fn proxy(
             StatusCode::OK,
             [(
                 HeaderName::from_static("x-request-id"),
-                HeaderValue::from_str(&request_id).unwrap_or_default(),
+                HeaderValue::from_str(&request_id)
+                    .expect("request ID must be a valid header value"),
             )],
             Json(serde_json::json!({"status":"ok","service":"gateway","proxy":true}))
                 .into_response(),
@@ -136,7 +97,7 @@ async fn proxy(
         StatusCode::BAD_GATEWAY
     })?;
 
-    let (parts, body) = req.into_parts();
+    let body = req.into_body();
     let body_bytes = body
         .collect()
         .await
@@ -179,7 +140,7 @@ async fn proxy(
         .body(Body::from(resp_body))
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    for (key, value) in resp_headers.iter() {
+    for (key, value) in &resp_headers {
         if key != "transfer-encoding" && key != "content-encoding" {
             response.headers_mut().insert(key, value.clone());
         }
@@ -194,15 +155,8 @@ fn get_request_id(headers: &HeaderMap) -> String {
     headers
         .get("x-request-id")
         .and_then(|v| v.to_str().ok())
-        .unwrap_or("")
-        .to_string()
-        .or_else(|| {
-            if headers.get("x-request-id").is_none() {
-                Some(Uuid::new_v4().to_string())
-            } else {
-                None
-            }
-        })
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
         .unwrap_or_else(|| Uuid::new_v4().to_string())
 }
 
