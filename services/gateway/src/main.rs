@@ -6,28 +6,18 @@ use axum::{
     response::{IntoResponse, Json, Response},
     routing::get,
 };
+use http_body_util::BodyExt;
 use hyper::body::Incoming;
 use hyper_util::{
     client::legacy::Client,
     rt::{TokioExecutor, TokioTimer},
 };
-use http_body_util::BodyExt;
 use serde::Serialize;
-use std::{
-    collections::HashMap,
-    env, net::SocketAddr, str::FromStr, sync::Arc, time::Duration,
-};
-use tokio::{
-    net::TcpListener,
-    sync::Mutex,
-    time::Instant,
-};
+use std::{collections::HashMap, env, net::SocketAddr, str::FromStr, sync::Arc, time::Duration};
+use tokio::{net::TcpListener, sync::Mutex, time::Instant};
 use tower_http::{
-    cors::CorsLayer,
-    limit::RequestBodyLimitLayer,
-    request_id::MakeRequestUuid,
-    set_header::SetResponseHeaderLayer,
-    trace::TraceLayer,
+    cors::CorsLayer, limit::RequestBodyLimitLayer, request_id::MakeRequestUuid,
+    set_header::SetResponseHeaderLayer, trace::TraceLayer,
 };
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
@@ -53,7 +43,7 @@ impl RateLimiter {
     async fn check(&self, client_ip: &str) -> bool {
         let mut guard = self.clients.lock().await;
         let now = Instant::now();
-        
+
         if let Some((start, count)) = guard.get_mut(client_ip) {
             if now.duration_since(*start) > self.window {
                 *start = now;
@@ -114,15 +104,28 @@ async fn proxy(
 
     // Route to internal service
     let backend_url = if path.starts_with("/api/control-plane") {
-        format!("{}{}", state.control_plane_url, path.replacen("/api/control-plane", "", 1))
+        format!(
+            "{}{}",
+            state.control_plane_url,
+            path.replacen("/api/control-plane", "", 1)
+        )
     } else if path.starts_with("/api/reasoning") {
-        format!("{}{}", state.reasoning_engine_url, path.replacen("/api/reasoning", "", 1))
+        format!(
+            "{}{}",
+            state.reasoning_engine_url,
+            path.replacen("/api/reasoning", "", 1)
+        )
     } else if path.starts_with("/health") {
         return Ok((
             StatusCode::OK,
-            [(HeaderName::from_static("x-request-id"), HeaderValue::from_str(&request_id).unwrap_or_default())],
-            Json(serde_json::json!({"status":"ok","service":"gateway","proxy":true})).into_response(),
-        ).into_response());
+            [(
+                HeaderName::from_static("x-request-id"),
+                HeaderValue::from_str(&request_id).unwrap_or_default(),
+            )],
+            Json(serde_json::json!({"status":"ok","service":"gateway","proxy":true}))
+                .into_response(),
+        )
+            .into_response());
     } else {
         return Err(StatusCode::NOT_FOUND);
     };
@@ -134,13 +137,23 @@ async fn proxy(
     })?;
 
     let (parts, body) = req.into_parts();
-    let body_bytes = body.collect().await.map_err(|_| StatusCode::BAD_REQUEST)?.to_bytes();
+    let body_bytes = body
+        .collect()
+        .await
+        .map_err(|_| StatusCode::BAD_REQUEST)?
+        .to_bytes();
 
     let upstream_req = Request::builder()
         .method(method)
         .uri(uri)
         .header("x-request-id", &request_id)
-        .header("x-forwarded-for", headers.get("x-forwarded-for").map(|v| v.to_str().unwrap_or("unknown")).unwrap_or("unknown"))
+        .header(
+            "x-forwarded-for",
+            headers
+                .get("x-forwarded-for")
+                .map(|v| v.to_str().unwrap_or("unknown"))
+                .unwrap_or("unknown"),
+        )
         .body(Body::from(body_bytes))
         .map_err(|_| StatusCode::BAD_GATEWAY)?;
 
@@ -153,7 +166,12 @@ async fn proxy(
     // Copy response
     let status = resp.status();
     let resp_headers = resp.headers().clone();
-    let resp_body = resp.into_body().collect().await.map_err(|_| StatusCode::BAD_GATEWAY)?.to_bytes();
+    let resp_body = resp
+        .into_body()
+        .collect()
+        .await
+        .map_err(|_| StatusCode::BAD_GATEWAY)?
+        .to_bytes();
 
     let mut response = Response::builder()
         .status(status)
@@ -194,10 +212,10 @@ fn get_request_id(headers: &HeaderMap) -> String {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
 
-    let control_plane_url = env::var("CONTROL_PLANE_URL")
-        .unwrap_or_else(|_| "http://localhost:8100".to_owned());
-    let reasoning_engine_url = env::var("REASONING_ENGINE_URL")
-        .unwrap_or_else(|_| "http://localhost:8200".to_owned());
+    let control_plane_url =
+        env::var("CONTROL_PLANE_URL").unwrap_or_else(|_| "http://localhost:8100".to_owned());
+    let reasoning_engine_url =
+        env::var("REASONING_ENGINE_URL").unwrap_or_else(|_| "http://localhost:8200".to_owned());
     let request_limit_bytes: usize = env::var("GATEWAY_REQUEST_LIMIT_BYTES")
         .unwrap_or_else(|_| "10485760".to_owned())
         .parse()
@@ -214,9 +232,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let host = env::var("KAGENT_HTTP_HOST").unwrap_or_else(|_| "127.0.0.1".to_owned());
-    let port = parse_port(
-        &env::var("KAGENT_GATEWAY_PORT").unwrap_or_else(|_| "8080".to_owned()),
-    )?;
+    let port = parse_port(&env::var("KAGENT_GATEWAY_PORT").unwrap_or_else(|_| "8080".to_owned()))?;
     let address: SocketAddr = format!("{host}:{port}").parse()?;
 
     let cors = CorsLayer::new()
