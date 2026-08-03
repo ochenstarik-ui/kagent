@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
 interface ServiceStatus {
   name: string;
@@ -93,6 +94,17 @@ export default function HomePage() {
             {v === "dashboard" ? "Обзор" : v === "projects" ? "Проекты" : "Pipeline"}
           </button>
         ))}
+        <Link
+          href="/workspaces"
+          style={{
+            padding: "0.5rem 1rem",
+            color: "#93c5fd",
+            fontSize: "0.875rem",
+            marginLeft: "auto"
+          }}
+        >
+          Agent Workspaces
+        </Link>
       </nav>
 
       {/* Dashboard View */}

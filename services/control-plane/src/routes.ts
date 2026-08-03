@@ -8,6 +8,7 @@ import type {
   UpdateTaskStatusInput,
   PaginationParams,
 } from "./domain.js";
+import { KAGENT_VERSION } from "./version.js";
 
 export async function registerRoutes(app: FastifyInstance) {
   // ── Health ────────────────────────────────────
@@ -15,7 +16,7 @@ export async function registerRoutes(app: FastifyInstance) {
   app.get("/health/live", async () => ({
     status: "alive",
     service: "control-plane",
-    version: "0.2.0",
+    version: KAGENT_VERSION,
   }));
 
   app.get("/health/ready", async () => ({
@@ -106,7 +107,7 @@ export async function registerRoutes(app: FastifyInstance) {
 
   app.get("/v1/system/info", async () => ({
     name: "KAgent Control Plane",
-    version: "0.2.0",
+    version: KAGENT_VERSION,
     apiVersion: "v1",
     uptime: process.uptime(),
   }));

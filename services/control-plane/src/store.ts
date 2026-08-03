@@ -31,7 +31,7 @@ export class Store {
       description: input.description,
       status: "active" as ProjectStatus,
       ownerAccountId,
-      repositoryUrl: input.repositoryUrl,
+      ...(input.repositoryUrl ? { repositoryUrl: input.repositoryUrl } : {}),
       createdAt: now,
       updatedAt: now,
     };
@@ -78,7 +78,7 @@ export class Store {
       title: input.title,
       description: input.description,
       status: "draft" as TaskStatus,
-      capability: input.capability,
+      ...(input.capability ? { capability: input.capability } : {}),
       contextRefs: input.contextRefs ?? [],
       createdAt: now,
       updatedAt: now,

@@ -4,6 +4,8 @@ import Fastify from "fastify";
 import { Pool } from "pg";
 import { registerRoutes } from "./routes.js";
 import { registerAuthRoutes } from "./auth-routes.js";
+import { registerWorkspaceRoutes } from "./workspace-routes.js";
+import { KAGENT_VERSION } from "./version.js";
 
 const app = Fastify({
   logger: {
@@ -23,6 +25,7 @@ const pool = new Pool({
 // Register API routes
 await registerRoutes(app);
 await registerAuthRoutes(app, pool);
+await registerWorkspaceRoutes(app);
 
 // Start
 const port = parseInt(process.env["CONTROL_PLANE_PORT"] ?? "8100", 10);
@@ -37,7 +40,7 @@ try {
       message: "server_started",
       host,
       port,
-      version: "0.2.0",
+      version: KAGENT_VERSION,
     })
   );
 } catch (err) {

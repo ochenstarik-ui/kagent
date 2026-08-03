@@ -14,3 +14,5 @@ Statuses:
 - accepted
 - deprecated
 - superseded
+
+- [ADR-0004: Governed agent workspaces](0004-agent-workspace-control-plane.md)

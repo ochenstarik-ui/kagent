@@ -4,9 +4,9 @@ KAgent — самостоятельная self-hosted мультиагентна
 
 ## Статус
 
-Текущая версия: **0.1.0-dev — Foundation Bootstrap**.
+Текущая версия: **0.9.0-dev — Agent Workspace Cockpit Foundation**.
 
-Первый инкремент создаёт чистую основу проекта:
+Текущая линия разработки включает foundation-компоненты и Agent Workspace Cockpit:
 
 - monorepo;
 - versioned contracts;
@@ -65,3 +65,11 @@ cargo run --manifest-path services/gateway/Cargo.toml
 ## Лицензия
 
 Лицензия пока не выбрана. До добавления `LICENSE` проект не предоставляется для свободного переиспользования.
+
+## Agent Workspace Cockpit 0.9
+
+Release 0.9 adds governed workspace contracts, lifecycle APIs, session metadata,
+line-level diff review, PostgreSQL migration 003 and the `/workspaces` Web UI.
+See [Agent Workspace Cockpit](docs/AGENT_WORKSPACE_COCKPIT.md) for verified scope
+and explicit limitations. Physical Git worktrees, PTY/Chromium processes and CLI
+agent harnesses remain planned for 0.10+.

@@ -111,3 +111,15 @@ Model selection is learned mainly from real task execution. The platform records
 Dedicated comparisons are sampled and budget-limited. Normal tasks use one model unless policy, uncertainty or criticality justifies escalation.
 
 The canonical efficiency metric is cost per successful task, not price per call.
+
+## 9. Agent Workspace Control Plane
+
+Release 0.9 introduces a governed workspace aggregate between tasks and the
+execution plane. The Control Plane owns lifecycle, limits, session metadata and
+review state. Workers own physical Git worktrees, PTY processes and Chromium
+instances. The Control Plane exposes only an opaque workspaceRef, never a host
+filesystem path.
+
+The 0.9 adapter is intentionally in memory. Migration 003 defines the durable
+schema; the PostgreSQL repository and worker provisioner are required in 0.10.
+See ADR-0004 and AGENT_WORKSPACE_COCKPIT.md.
