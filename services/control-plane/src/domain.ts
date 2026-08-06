@@ -32,7 +32,7 @@ export interface Project {
   description: string;
   status: ProjectStatus;
   ownerAccountId: string;
-  repositoryUrl?: string;
+  repositoryUrl?: string | undefined;
   createdAt: string;
   updatedAt: string;
 }
@@ -43,8 +43,8 @@ export interface Task {
   title: string;
   description: string;
   status: TaskStatus;
-  assignedAgentId?: string;
-  capability?: string;
+  assignedAgentId?: string | undefined;
+  capability?: string | undefined;
   contextRefs: string[]; // links to artifacts, specs, etc
   createdAt: string;
   updatedAt: string;

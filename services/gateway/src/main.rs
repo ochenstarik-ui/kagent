@@ -1,33 +1,18 @@
 use axum::{
     Router,
     body::Body,
-    extract::State,
-    http::{HeaderMap, HeaderName, HeaderValue, Method, Request, StatusCode, Uri},
+    extract::{ConnectInfo, State},
+    http::{HeaderMap, HeaderName, HeaderValue, Method, Request, StatusCode},
     response::{IntoResponse, Json, Response},
     routing::get,
 };
-use hyper::body::Incoming;
-use hyper_util::{
-    client::legacy::Client,
-    rt::{TokioExecutor, TokioTimer},
-};
 use http_body_util::BodyExt;
 use serde::Serialize;
-use std::{
-    collections::HashMap,
-    env, net::SocketAddr, str::FromStr, sync::Arc, time::Duration,
-};
-use tokio::{
-    net::TcpListener,
-    sync::Mutex,
-    time::Instant,
-};
+use std::{collections::HashMap, env, net::SocketAddr, sync::Arc, time::Duration};
+use tokio::{net::TcpListener, sync::Mutex, time::Instant};
 use tower_http::{
-    cors::CorsLayer,
-    limit::RequestBodyLimitLayer,
-    request_id::MakeRequestUuid,
-    set_header::SetResponseHeaderLayer,
-    trace::TraceLayer,
+    catch_panic::CatchPanicLayer, cors::CorsLayer, limit::RequestBodyLimitLayer,
+    request_id::MakeRequestUuid, set_header::SetResponseHeaderLayer, trace::TraceLayer,
 };
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
@@ -35,6 +20,7 @@ use uuid::Uuid;
 
 // ── Rate Limiter ──────────────────────────
 
+#[derive(Clone)]
 struct RateLimiter {
     window: Duration,
     max_requests: u32,
@@ -53,7 +39,7 @@ impl RateLimiter {
     async fn check(&self, client_ip: &str) -> bool {
         let mut guard = self.clients.lock().await;
         let now = Instant::now();
-        
+
         if let Some((start, count)) = guard.get_mut(client_ip) {
             if now.duration_since(*start) > self.window {
                 *start = now;
@@ -75,7 +61,6 @@ impl RateLimiter {
 // ── Application State ─────────────────────
 
 struct AppState {
-    client: Client<TokioExecutor, Incoming>,
     control_plane_url: String,
     reasoning_engine_url: String,
     request_limit_bytes: usize,
@@ -91,7 +76,7 @@ struct HealthResponse {
     request_id: String,
 }
 
-async fn live(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Json<HealthResponse> {
+async fn live(headers: HeaderMap) -> Json<HealthResponse> {
     let request_id = get_request_id(&headers);
     Json(HealthResponse {
         status: "ok",
@@ -114,46 +99,68 @@ async fn proxy(
 
     // Route to internal service
     let backend_url = if path.starts_with("/api/control-plane") {
-        format!("{}{}", state.control_plane_url, path.replacen("/api/control-plane", "", 1))
+        format!(
+            "{}{}",
+            state.control_plane_url,
+            path.replacen("/api/control-plane", "", 1)
+        )
     } else if path.starts_with("/api/reasoning") {
-        format!("{}{}", state.reasoning_engine_url, path.replacen("/api/reasoning", "", 1))
+        format!(
+            "{}{}",
+            state.reasoning_engine_url,
+            path.replacen("/api/reasoning", "", 1)
+        )
     } else if path.starts_with("/health") {
         return Ok((
             StatusCode::OK,
-            [(HeaderName::from_static("x-request-id"), HeaderValue::from_str(&request_id).unwrap_or_default())],
-            Json(serde_json::json!({"status":"ok","service":"gateway","proxy":true})).into_response(),
-        ).into_response());
+            [(
+                HeaderName::from_static("x-request-id"),
+                HeaderValue::from_str(&request_id)
+                    .unwrap_or_else(|_| HeaderValue::from_static("invalid")),
+            )],
+            Json(serde_json::json!({"status":"ok","service":"gateway","proxy":true}))
+                .into_response(),
+        )
+            .into_response());
     } else {
         return Err(StatusCode::NOT_FOUND);
     };
 
-    // Build upstream request
-    let uri = Uri::from_str(&backend_url).map_err(|e| {
-        warn!(%e, "Invalid backend URI");
-        StatusCode::BAD_GATEWAY
-    })?;
+    // Forward using reqwest because hyper-util's legacy Client is awkward in this setup
+    let body_bytes = req
+        .into_body()
+        .collect()
+        .await
+        .map_err(|_| StatusCode::BAD_REQUEST)?
+        .to_bytes();
 
-    let (parts, body) = req.into_parts();
-    let body_bytes = body.collect().await.map_err(|_| StatusCode::BAD_REQUEST)?.to_bytes();
-
-    let upstream_req = Request::builder()
-        .method(method)
-        .uri(uri)
-        .header("x-request-id", &request_id)
-        .header("x-forwarded-for", headers.get("x-forwarded-for").map(|v| v.to_str().unwrap_or("unknown")).unwrap_or("unknown"))
-        .body(Body::from(body_bytes))
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
         .map_err(|_| StatusCode::BAD_GATEWAY)?;
 
-    // Forward
-    let resp = state.client.request(upstream_req).await.map_err(|e| {
-        warn!(%e, "Backend unreachable");
-        StatusCode::BAD_GATEWAY
-    })?;
+    let resp = client
+        .request(method, backend_url)
+        .header("x-request-id", &request_id)
+        .header(
+            "x-forwarded-for",
+            headers
+                .get("x-forwarded-for")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("unknown"),
+        )
+        .body(body_bytes)
+        .send()
+        .await
+        .map_err(|e| {
+            warn!(%e, "Backend unreachable");
+            StatusCode::BAD_GATEWAY
+        })?;
 
     // Copy response
-    let status = resp.status();
+    let status = StatusCode::from_u16(resp.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
     let resp_headers = resp.headers().clone();
-    let resp_body = resp.into_body().collect().await.map_err(|_| StatusCode::BAD_GATEWAY)?.to_bytes();
+    let resp_body = resp.bytes().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
 
     let mut response = Response::builder()
         .status(status)
@@ -176,16 +183,44 @@ fn get_request_id(headers: &HeaderMap) -> String {
     headers
         .get("x-request-id")
         .and_then(|v| v.to_str().ok())
-        .unwrap_or("")
-        .to_string()
-        .or_else(|| {
-            if headers.get("x-request-id").is_none() {
-                Some(Uuid::new_v4().to_string())
-            } else {
-                None
-            }
-        })
+        .map(|s| s.to_string())
         .unwrap_or_else(|| Uuid::new_v4().to_string())
+}
+
+async fn rate_limit_middleware(
+    State(limiter): State<RateLimiter>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    req: Request<Body>,
+    next: axum::middleware::Next,
+) -> Response {
+    let client_ip = req
+        .headers()
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.split(',').next())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|| addr.ip().to_string());
+
+    if !limiter.check(&client_ip).await {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(serde_json::json!({"error":"rate limit exceeded"})),
+        )
+            .into_response();
+    }
+
+    next.run(req).await
+}
+
+async fn cleanup_rate_limiter(limiter: RateLimiter) {
+    let mut interval = tokio::time::interval(Duration::from_secs(300));
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    loop {
+        interval.tick().await;
+        let mut guard = limiter.clients.lock().await;
+        let now = Instant::now();
+        guard.retain(|_, (start, _)| now.duration_since(*start) <= limiter.window);
+    }
 }
 
 // ── Main ──────────────────────────────────
@@ -194,29 +229,23 @@ fn get_request_id(headers: &HeaderMap) -> String {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
 
-    let control_plane_url = env::var("CONTROL_PLANE_URL")
-        .unwrap_or_else(|_| "http://localhost:8100".to_owned());
-    let reasoning_engine_url = env::var("REASONING_ENGINE_URL")
-        .unwrap_or_else(|_| "http://localhost:8200".to_owned());
+    let control_plane_url =
+        env::var("CONTROL_PLANE_URL").unwrap_or_else(|_| "http://localhost:8100".to_owned());
+    let reasoning_engine_url =
+        env::var("REASONING_ENGINE_URL").unwrap_or_else(|_| "http://localhost:8200".to_owned());
     let request_limit_bytes: usize = env::var("GATEWAY_REQUEST_LIMIT_BYTES")
         .unwrap_or_else(|_| "10485760".to_owned())
         .parse()
         .unwrap_or(10 * 1024 * 1024); // 10 MB
 
     let state = Arc::new(AppState {
-        client: Client::builder(TokioExecutor::new())
-            .timer(TokioTimer::new())
-            .pool_idle_timeout(Duration::from_secs(30))
-            .build_http(),
         control_plane_url: control_plane_url.trim_end_matches('/').to_owned(),
         reasoning_engine_url: reasoning_engine_url.trim_end_matches('/').to_owned(),
         request_limit_bytes,
     });
 
     let host = env::var("KAGENT_HTTP_HOST").unwrap_or_else(|_| "127.0.0.1".to_owned());
-    let port = parse_port(
-        &env::var("KAGENT_GATEWAY_PORT").unwrap_or_else(|_| "8080".to_owned()),
-    )?;
+    let port = parse_port(&env::var("KAGENT_GATEWAY_PORT").unwrap_or_else(|_| "8080".to_owned()))?;
     let address: SocketAddr = format!("{host}:{port}").parse()?;
 
     let cors = CorsLayer::new()
@@ -224,8 +253,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE])
         .allow_headers(tower_http::cors::Any);
 
+    let limiter = RateLimiter::new(60, 100);
+    tokio::spawn(cleanup_rate_limiter(limiter.clone()));
+
     let app = Router::new()
         .route("/health/live", get(live))
+        .route_layer(axum::middleware::from_fn_with_state(
+            limiter.clone(),
+            rate_limit_middleware,
+        ))
         .fallback(proxy)
         .layer(SetResponseHeaderLayer::overriding(
             HeaderName::from_static("x-content-type-options"),
@@ -242,7 +278,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             HeaderName::from_static("x-request-id"),
             MakeRequestUuid,
         ))
-        .with_state(state);
+        .layer(CatchPanicLayer::new())
+        .with_state(state.clone());
 
     let listener = TcpListener::bind(address).await?;
     info!(%address, control_plane_url = %control_plane_url, reasoning_engine_url = %reasoning_engine_url, "gateway_started");
