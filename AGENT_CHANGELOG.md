@@ -38,6 +38,75 @@ Implement persistent project and task lifecycle in Control Plane:
 - health/readiness probes;
 - contract and integration tests.
 
+## 2026-08-06 — Runtime surface, session model and integration boundary
+
+### Context
+
+Two external inputs were reviewed: an owner-authored improvements document covering
+workers, satellites and infrastructure integration, and Prime Agent, a publicly available
+agent platform under an MIT licence whose runtime design the document partly draws on.
+
+The improvements document was strong as product direction and weak as a plan: it created a
+second source of truth alongside this specification, dropped the MVP definition, omitted a
+green build as a precondition, and restated several obligations — idempotency, quality
+gates, refinement evaluation — without the mechanisms that make them real. Its genuinely
+new material has been merged into the specification rather than kept as a parallel
+document.
+
+Prime Agent supplied concrete mechanics that were missing here: a single model-facing
+execution surface, an invariant separating the in-kernel shim from provider calls and the
+agent loop, session storage as an append-only tree with navigation and forking, compaction
+cut mechanics, child cost attribution, privacy expressed as routing constraints, and a
+procedure for protocol compatibility. Its security posture was explicitly not adopted: it
+states that its worker and kernel processes are not a security sandbox and that code runs
+with the user's permissions, which is incompatible with a platform that reaches production
+infrastructure.
+
+### Accepted as proposed
+
+- The model-facing surface is one programmatic execution environment rather than a tool
+  registry, enabled only inside a mandatory sandbox, with a typed host bridge holding all
+  authority and a shim that never calls providers or implements an agent loop.
+- A session is an append-only tree of typed entries; context is derived by walking a path,
+  navigation and forking are supported, and authority stays in PostgreSQL and object
+  storage rather than in session files.
+- Privacy is a hard constraint on the routing decision, with structural provider
+  declarations, no silent degradation and no override flag for local-only classes.
+- Every cross-boundary change is classified as compatible, capability-gated or
+  incompatible, with negotiation on connect and compatibility tests in both directions.
+
+### Decisions taken on open questions
+
+- The Personal Assistant Agent is retained; the improvements document had dropped it, and
+  the personal data plane decision depends on it.
+- Satellite and federation are removed from the plan and deferred to a separate
+  specification: two authoritative control planes require an ownership and conflict model
+  that does not exist.
+- Subagent recursion is permitted to depth two with a reserved subtree budget, relaxing the
+  earlier prohibition while keeping tree ownership with the orchestrator.
+- Installation by piping a downloaded script into a privileged interpreter is prohibited,
+  including in documentation examples.
+
+### Architecture artifacts
+
+- `docs/adr/0017-programmatic-execution-environment.md`
+- `docs/adr/0018-session-as-append-only-tree.md`
+- `docs/adr/0019-privacy-constrained-provider-routing.md`
+- `docs/adr/0020-protocol-versioning-and-capability-negotiation.md`
+- Amendments to ADR-0004, ADR-0006 and ADR-0012.
+- Specification sections 42–51.
+
+### Constraints reaffirmed
+
+Architecture may be borrowed from third-party agent platforms; source files may not.
+Vendoring third-party code under a compatible licence requires a separate owner decision
+and preservation of attribution notices.
+
+### Next increment
+
+Stage 0.9.0 remains the precondition. Within stage 0.10, the sandbox is a delivery blocker
+for the execution environment and must land before it, not after.
+
 ## 2026-08-03 — Trust, verification integrity and cost control decisions
 
 ### Context

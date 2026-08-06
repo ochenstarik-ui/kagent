@@ -31,6 +31,8 @@ Spend is managed by a two-phase ledger in PostgreSQL.
 
 **Global pause.** A single platform-wide switch stops admission of new steps everywhere, preserving checkpoints and leases. This is distinct from the per-task stop control and from the security read-only mode, and any of the three may be active independently.
 
+**Child attribution.** Spend by a subagent is attributed to its parent through explicit attribution records, so that the parent's total is complete while each child's contribution remains separately visible in the session tree. A parent's budget bounds its whole subtree; a child cannot obtain budget its parent does not hold.
+
 The ledger is append-only and is part of the audit surface: every reservation, commitment and release is attributable to a run, a step and a model configuration.
 
 ## Consequences
