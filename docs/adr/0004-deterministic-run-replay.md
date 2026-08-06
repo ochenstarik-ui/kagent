@@ -41,6 +41,8 @@ The replay lookup key is `(run_id, step_id, attempt)` for exact replay and `(age
 
 Secrets are excluded from cassettes by the same masking rules that apply to logs. A cassette is treated as project-confidential data and inherits the project data egress policy.
 
+**Test policy.** Automated tests never call a real provider and never spend tokens. Suites run against recorded cassettes or a faux provider that satisfies the same adapter contract. A test that requires a live provider key is rejected in review. This is the same discipline Prime Agent applies to its own suite and it is what makes the replay machinery pay for itself immediately rather than after the platform matures.
+
 ## Consequences
 
 - Agent behaviour becomes testable: pipeline and role changes are validated against recorded fixtures in continuous integration at zero provider cost.
