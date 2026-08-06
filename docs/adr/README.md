@@ -35,5 +35,12 @@ Statuses:
 | 0014 | Executable lessons as guardrails | proposed |
 | 0015 | Personal data plane isolation | proposed |
 | 0016 | Computed stage status and specification drift detection | proposed |
+| 0017 | Programmatic execution environment as the agent tool surface | proposed |
+| 0018 | Session as an append-only tree | proposed |
+| 0019 | Privacy-constrained provider routing | proposed |
+| 0020 | Protocol versioning and capability negotiation | proposed |
 
-ADR-0004 through ADR-0016 are specified in sections 35–41 of `docs/KAGENT_FULL_PRODUCT_SPEC.md`. They move to `accepted` when the project owner approves them.
+ADR-0004 through ADR-0016 are specified in sections 35–41 of `docs/KAGENT_FULL_PRODUCT_SPEC.md`.
+ADR-0017 through ADR-0020 are specified in sections 42–51. They move to `accepted` when the project owner approves them.
+
+ADR-0017 carries a blocking precondition: the programmatic execution environment is not enabled without the sandbox described in specification section 42.6. Accepting it also replaces the tool registry in the agent runtime, which is a rewrite rather than an addition.
