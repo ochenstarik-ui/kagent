@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   hashPassword,
   verifyPassword,
@@ -9,11 +9,15 @@ import {
   type TokenPayload,
 } from "./auth.js";
 
-function replyStub() {
-  const status = (code: number) => ({
-    send: (payload: unknown) => ({ code, payload }),
-  });
-  return { status } as unknown as { status: (code: number) => { send: (payload: unknown) => { code: number; payload: unknown } } };
+function stubReplyApi() {
+  const status = vi.fn<(code: number) => { send: (payload: unknown) => unknown }>();
+  const send = vi.fn<(payload: unknown) => unknown>();
+  status.mockReturnValue({ send: send as unknown as (payload: unknown) => unknown });
+  return { status, send };
+}
+
+function stubRequest(headers: Record<string, string>) {
+  return { headers } as unknown as Parameters<typeof authMiddleware>[0];
 }
 
 describe("auth", () => {
@@ -25,17 +29,21 @@ describe("auth", () => {
   });
 
   it("returns 401 without bearer token", async () => {
-    const req = { headers: {} } as Parameters<typeof authMiddleware>[0];
-    const reply = replyStub();
-    const result = await authMiddleware(req, reply as Parameters<typeof authMiddleware>[1]);
-    expect((result as { code: number }).code).toBe(401);
+    const reply = stubReplyApi();
+    await authMiddleware(
+      stubRequest({}),
+      reply as unknown as Parameters<typeof authMiddleware>[1]
+    );
+    expect(reply.status).toHaveBeenCalledWith(401);
   });
 
   it("rejects invalid bearer token", async () => {
-    const req = { headers: { authorization: "Bearer invalid-token" } } as Parameters<typeof authMiddleware>[0];
-    const reply = replyStub();
-    const result = await authMiddleware(req, reply as Parameters<typeof authMiddleware>[1]);
-    expect((result as { code: number }).code).toBe(401);
+    const reply = stubReplyApi();
+    await authMiddleware(
+      stubRequest({ authorization: "Bearer invalid-token" }),
+      reply as unknown as Parameters<typeof authMiddleware>[1]
+    );
+    expect(reply.status).toHaveBeenCalledWith(401);
   });
 
   it("accepts valid bearer token and attaches principal", async () => {
@@ -47,10 +55,15 @@ describe("auth", () => {
     };
     const { accessToken } = generateTokens(payload);
 
-    const req = { headers: { authorization: `Bearer ${accessToken}` } } as Parameters<typeof authMiddleware>[0];
-    const reply = { status: () => ({ send: (v: unknown) => v }) } as unknown as Parameters<typeof authMiddleware>[1];
-    await authMiddleware(req, reply);
-    expect((req as { principal?: TokenPayload }).principal).toMatchObject({
+    const reply = stubReplyApi();
+    const req = stubRequest({ authorization: `Bearer ${accessToken}` });
+    await authMiddleware(
+      req,
+      reply as unknown as Parameters<typeof authMiddleware>[1]
+    );
+    expect(reply.status).not.toHaveBeenCalled();
+    const reqRw = req as unknown as { principal?: TokenPayload };
+    expect(reqRw.principal).toMatchObject({
       sub: payload.sub,
       email: payload.email,
       role: payload.role,
@@ -60,15 +73,20 @@ describe("auth", () => {
 
   it("requireRole enforces role", async () => {
     const req = { principal: { role: "developer" } } as unknown as Parameters<ReturnType<typeof requireRole>>[0];
-    const reply = {
-      status: (code: number) => ({ send: (payload: unknown) => ({ code, payload }) }),
-    } as unknown as Parameters<ReturnType<typeof requireRole>>[1];
-
+    const replyAll = stubReplyApi();
     const allowed = requireRole("admin", "developer");
-    expect(await allowed(req, reply)).toBeUndefined();
+    await allowed(
+      req,
+      replyAll as unknown as Parameters<ReturnType<typeof requireRole>>[1]
+    );
+    expect(replyAll.status).not.toHaveBeenCalled();
 
+    const replyDen = stubReplyApi();
     const denied = requireRole("admin");
-    const result = await denied(req, reply);
-    expect((result as { code: number }).code).toBe(403);
+    await denied(
+      req,
+      replyDen as unknown as Parameters<ReturnType<typeof requireRole>>[1]
+    );
+    expect(replyDen.status).toHaveBeenCalledWith(403);
   });
 });
