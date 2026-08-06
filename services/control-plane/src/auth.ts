@@ -1,6 +1,6 @@
 /** Authentication module — JWT, bcrypt, session management. */
 
-import { randomBytes, createHash, timingSafeEqual } from "node:crypto";
+import { randomBytes, createHash, timingSafeEqual, pbkdf2 } from "node:crypto";
 import { createSigner, createVerifier } from "fast-jwt";
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 
@@ -50,20 +50,22 @@ export interface AuthTokens {
 export async function hashPassword(password: string): Promise<string> {
   // Use Node crypto pbkdf2 as bcrypt alternative (no native deps)
   const salt = randomBytes(16).toString("hex");
-  const hash = await pbkdf2(password, salt);
+  const hash = await pbkdf2Promise(password, salt);
   return `pbkdf2:${salt}:${hash}`;
 }
 
 export async function verifyPassword(password: string, stored: string): Promise<boolean> {
-  const [, salt, expectedHash] = stored.split(":");
-  const hash = await pbkdf2(password, salt);
+  const parts = stored.split(":");
+  if (parts.length !== 3) return false;
+  const [, salt, expectedHash] = parts;
+  if (!salt || !expectedHash) return false;
+  const hash = await pbkdf2Promise(password, salt);
   return timingSafeEqual(Buffer.from(hash), Buffer.from(expectedHash));
 }
 
-function pbkdf2(password: string, salt: string): Promise<string> {
+function pbkdf2Promise(password: string, salt: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const crypto = require("node:crypto") as typeof import("node:crypto");
-    crypto.pbkdf2(
+    pbkdf2(
       password,
       salt,
       100_000,

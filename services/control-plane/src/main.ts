@@ -6,12 +6,7 @@ import { registerRoutes } from "./routes.js";
 import { registerAuthRoutes } from "./auth-routes.js";
 
 const app = Fastify({
-  logger: {
-    transport: {
-      target: "pino-pretty",
-      options: { colorize: false, translateTime: "HH:MM:ss" },
-    },
-  },
+  logger: true,
 });
 
 // Database pool
