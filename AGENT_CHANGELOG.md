@@ -38,6 +38,138 @@ Implement persistent project and task lifecycle in Control Plane:
 - health/readiness probes;
 - contract and integration tests.
 
+## 2026-08-06 — Runtime surface, session model and integration boundary
+
+### Context
+
+Two external inputs were reviewed: an owner-authored improvements document covering
+workers, satellites and infrastructure integration, and Prime Agent, a publicly available
+agent platform under an MIT licence whose runtime design the document partly draws on.
+
+The improvements document was strong as product direction and weak as a plan: it created a
+second source of truth alongside this specification, dropped the MVP definition, omitted a
+green build as a precondition, and restated several obligations — idempotency, quality
+gates, refinement evaluation — without the mechanisms that make them real. Its genuinely
+new material has been merged into the specification rather than kept as a parallel
+document.
+
+Prime Agent supplied concrete mechanics that were missing here: a single model-facing
+execution surface, an invariant separating the in-kernel shim from provider calls and the
+agent loop, session storage as an append-only tree with navigation and forking, compaction
+cut mechanics, child cost attribution, privacy expressed as routing constraints, and a
+procedure for protocol compatibility. Its security posture was explicitly not adopted: it
+states that its worker and kernel processes are not a security sandbox and that code runs
+with the user's permissions, which is incompatible with a platform that reaches production
+infrastructure.
+
+### Accepted as proposed
+
+- The model-facing surface is one programmatic execution environment rather than a tool
+  registry, enabled only inside a mandatory sandbox, with a typed host bridge holding all
+  authority and a shim that never calls providers or implements an agent loop.
+- A session is an append-only tree of typed entries; context is derived by walking a path,
+  navigation and forking are supported, and authority stays in PostgreSQL and object
+  storage rather than in session files.
+- Privacy is a hard constraint on the routing decision, with structural provider
+  declarations, no silent degradation and no override flag for local-only classes.
+- Every cross-boundary change is classified as compatible, capability-gated or
+  incompatible, with negotiation on connect and compatibility tests in both directions.
+
+### Decisions taken on open questions
+
+- The Personal Assistant Agent is retained; the improvements document had dropped it, and
+  the personal data plane decision depends on it.
+- Satellite and federation are removed from the plan and deferred to a separate
+  specification: two authoritative control planes require an ownership and conflict model
+  that does not exist.
+- Subagent recursion is permitted to depth two with a reserved subtree budget, relaxing the
+  earlier prohibition while keeping tree ownership with the orchestrator.
+- Installation by piping a downloaded script into a privileged interpreter is prohibited,
+  including in documentation examples.
+
+### Architecture artifacts
+
+- `docs/adr/0017-programmatic-execution-environment.md`
+- `docs/adr/0018-session-as-append-only-tree.md`
+- `docs/adr/0019-privacy-constrained-provider-routing.md`
+- `docs/adr/0020-protocol-versioning-and-capability-negotiation.md`
+- Amendments to ADR-0004, ADR-0006 and ADR-0012.
+- Specification sections 42–51.
+
+### Constraints reaffirmed
+
+Architecture may be borrowed from third-party agent platforms; source files may not.
+Vendoring third-party code under a compatible licence requires a separate owner decision
+and preservation of attribution notices.
+
+### Next increment
+
+Stage 0.9.0 remains the precondition. Within stage 0.10, the sandbox is a delivery blocker
+for the execution environment and must land before it, not after.
+
+## 2026-08-03 — Trust, verification integrity and cost control decisions
+
+### Context
+
+A review of the repository against the specification found that delivery status was
+self-reported and unverified: stages up to 0.8 were marked complete while continuous
+integration had been failing on every push to the default branch since 0.6, project and
+task persistence was not wired to PostgreSQL, and several components existed as files that
+no other module imports.
+
+That is a symptom of a structural gap rather than of individual defects. A platform that
+develops itself needs mechanisms that make its own behaviour observable, its verification
+non-substitutable and its spending bounded. Thirteen decisions were added to cover it.
+
+### Accepted as proposed
+
+- Model calls are recorded as immutable cassettes; runs are replayable without a provider.
+- Role instructions live in a versioned prompt registry, never as inline literals.
+- The test oracle is separated from the implementation, frozen during implementation and
+  validated by mutation, so that a green status cannot be obtained by editing tests.
+- Integration is serialized through a merge queue; verification on a stale base never
+  authorizes a merge.
+- Spend is managed by a two-phase reservation ledger with a burn-rate circuit breaker and a
+  global pause; per-task limits alone do not bound total cost under parallelism.
+- External effects pass through an effect ledger with idempotency keys and an outbox;
+  connectors without idempotency support are restricted to read operations.
+- A request for a human decision is a typed object with a TTL and a timeout policy, and it
+  releases the worker and the lease while waiting.
+- Context has a declared lifecycle with anchors that are never summarised and provenance
+  labels that keep retrieved content as data rather than instructions.
+- Model calls pass through a cache with prefix-stable context assembly and per-project
+  isolation.
+- A lesson becomes active only if it declares how it changes behaviour, preferably as an
+  executable check.
+- Personal data is a separate plane that development roles cannot address by construction.
+- The platform measures itself with an evaluation suite and autonomy metrics; agents may not
+  modify their own evaluation cases as part of a product task.
+- Delivery status is computed from continuous integration evidence, and specification drift
+  fails the build.
+
+### Architecture artifacts
+
+- `docs/adr/0004-deterministic-run-replay.md`
+- `docs/adr/0005-test-oracle-integrity.md`
+- `docs/adr/0006-budget-ledger-and-circuit-breaker.md`
+- `docs/adr/0007-versioned-prompt-registry.md`
+- `docs/adr/0008-platform-evaluation-suite.md`
+- `docs/adr/0009-branching-and-merge-queue.md`
+- `docs/adr/0010-effect-ledger.md`
+- `docs/adr/0011-human-decision-contract.md`
+- `docs/adr/0012-context-lifecycle.md`
+- `docs/adr/0013-model-call-cache.md`
+- `docs/adr/0014-executable-lessons.md`
+- `docs/adr/0015-personal-data-plane-isolation.md`
+- `docs/adr/0016-computed-stage-status.md`
+- Specification sections 35–41.
+
+### Next increment
+
+Stage 0.9.0 is a precondition for everything else: restore a green trunk, wire the Control
+Plane to PostgreSQL, and add a Python job to continuous integration. Nothing in 0.9.1–0.9.5
+is verifiable while the build is red.
+
 ## 2026-07-24 — Capability-first routing decision
 
 ### Accepted
