@@ -1,7 +1,7 @@
 /** Control Plane API routes — project + task CRUD + audit. */
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
-import { store } from "./store.js";
+import { getStore, PostgresStore } from "./db.js";
 import type {
   CreateProjectInput,
   CreateTaskInput,
@@ -9,7 +9,24 @@ import type {
   PaginationParams,
 } from "./domain.js";
 
-export async function registerRoutes(app: FastifyInstance) {
+export async function registerRoutes(app: FastifyInstance, store: PostgresStore = getStore()) {
+  // Error shielding handler for internal database/server errors
+  app.setErrorHandler((error: Error & { statusCode?: number }, req: FastifyRequest, reply: FastifyReply) => {
+    req.log.error(error);
+    const statusCode = error.statusCode && error.statusCode < 500 ? error.statusCode : 500;
+    if (statusCode >= 500) {
+      return reply.status(500).send({
+        code: "internal_error",
+        message: "Internal server error",
+        requestId: req.id,
+      });
+    }
+    return reply.status(statusCode).send({
+      code: error.name ?? "error",
+      message: error.message,
+    });
+  });
+
   // ── Health ────────────────────────────────────
 
   app.get("/health/live", async () => ({
@@ -18,24 +35,36 @@ export async function registerRoutes(app: FastifyInstance) {
     version: "0.2.0",
   }));
 
-  app.get("/health/ready", async () => ({
-    status: "ready",
-    projects: store.listProjects().length,
-    tasks: store.listTasks().length,
-  }));
+  app.get("/health/ready", async (_req: FastifyRequest, reply: FastifyReply) => {
+    const isHealthy = await store.healthCheck();
+    if (!isHealthy) {
+      return reply.status(503).send({
+        status: "unhealthy",
+        message: "Database connection unavailable",
+      });
+    }
+    const [projectsCount, tasksCount] = await Promise.all([
+      store.countProjects(),
+      store.countTasks(),
+    ]);
+    return {
+      status: "ready",
+      projects: projectsCount,
+      tasks: tasksCount,
+    };
+  });
 
   // ── Projects ──────────────────────────────────
 
   app.get("/v1/projects", async (req: FastifyRequest) => {
     const { offset, limit } = req.query as PaginationParams;
-    const all = store.listProjects();
-    const page = all.slice(offset ?? 0, (offset ?? 0) + (limit ?? 50));
-    return { items: page, total: all.length };
+    const { items, total } = await store.listProjects(offset, limit);
+    return { items, total };
   });
 
   app.get("/v1/projects/:id", async (req: FastifyRequest, reply: FastifyReply) => {
     const { id } = req.params as { id: string };
-    const project = store.getProject(id);
+    const project = await store.getProject(id);
     if (!project) return reply.status(404).send({ code: "not_found", message: "Project not found" });
     return project;
   });
@@ -46,14 +75,14 @@ export async function registerRoutes(app: FastifyInstance) {
     if (!input.name || !input.description) {
       return reply.status(400).send({ code: "invalid_input", message: "name and description required" });
     }
-    const project = store.createProject(input, actorId);
+    const project = await store.createProject(input, actorId);
     return reply.status(201).send(project);
   });
 
   app.patch("/v1/projects/:id", async (req: FastifyRequest, reply: FastifyReply) => {
     const { id } = req.params as { id: string };
     const actorId = (req.headers["x-actor-id"] as string) ?? "anonymous";
-    const project = store.updateProject(id, req.body as Record<string, unknown>, actorId);
+    const project = await store.updateProject(id, req.body as Record<string, unknown>, actorId);
     if (!project) return reply.status(404).send({ code: "not_found", message: "Project not found" });
     return project;
   });
@@ -61,14 +90,14 @@ export async function registerRoutes(app: FastifyInstance) {
   // ── Tasks ─────────────────────────────────────
 
   app.get("/v1/tasks", async (req: FastifyRequest) => {
-    const { projectId } = req.query as { projectId?: string };
-    const tasks = store.listTasks(projectId);
-    return { items: tasks, total: tasks.length };
+    const { projectId, offset, limit } = req.query as { projectId?: string; offset?: number; limit?: number };
+    const { items, total } = await store.listTasks(projectId, offset, limit);
+    return { items, total };
   });
 
   app.get("/v1/tasks/:id", async (req: FastifyRequest, reply: FastifyReply) => {
     const { id } = req.params as { id: string };
-    const task = store.getTask(id);
+    const task = await store.getTask(id);
     if (!task) return reply.status(404).send({ code: "not_found", message: "Task not found" });
     return task;
   });
@@ -79,9 +108,9 @@ export async function registerRoutes(app: FastifyInstance) {
     if (!input.projectId || !input.title) {
       return reply.status(400).send({ code: "invalid_input", message: "projectId and title required" });
     }
-    const project = store.getProject(input.projectId);
+    const project = await store.getProject(input.projectId);
     if (!project) return reply.status(404).send({ code: "not_found", message: "Project not found" });
-    const task = store.createTask(input, actorId);
+    const task = await store.createTask(input, actorId);
     return reply.status(201).send(task);
   });
 
@@ -89,7 +118,7 @@ export async function registerRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const { status, reason } = req.body as UpdateTaskStatusInput;
     const actorId = (req.headers["x-actor-id"] as string) ?? "anonymous";
-    const result = store.updateTaskStatus(id, status, actorId, reason);
+    const result = await store.updateTaskStatus(id, status, actorId, reason);
     if (result.error) return reply.status(422).send({ code: "invalid_transition", message: result.error });
     return result.task;
   });
@@ -98,7 +127,7 @@ export async function registerRoutes(app: FastifyInstance) {
 
   app.get("/v1/audit", async (req: FastifyRequest) => {
     const { projectId, limit } = req.query as { projectId?: string; limit?: number };
-    const events = store.listAuditEvents(projectId, limit);
+    const events = await store.listAuditEvents(projectId, limit);
     return { items: events, total: events.length };
   });
 

@@ -4,6 +4,7 @@ import Fastify from "fastify";
 import { Pool } from "pg";
 import { registerRoutes } from "./routes.js";
 import { registerAuthRoutes } from "./auth-routes.js";
+import { getStore } from "./db.js";
 
 const app = Fastify({
   logger: true,
@@ -16,7 +17,8 @@ const pool = new Pool({
 });
 
 // Register API routes
-await registerRoutes(app);
+const store = getStore();
+await registerRoutes(app, store);
 await registerAuthRoutes(app, pool);
 
 // Start
@@ -43,6 +45,7 @@ try {
 // Graceful shutdown
 async function shutdown(signal: string) {
   console.log(JSON.stringify({ level: "info", service: "control-plane", message: "shutdown", signal }));
+  await store.close();
   await app.close();
   process.exit(0);
 }
