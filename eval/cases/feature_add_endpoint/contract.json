@@ -1,15 +1,9 @@
 {
   "id": "feature_add_endpoint",
+  "status": "draft",
   "category": "feature",
   "description": "Add a new health endpoint to a FastAPI service that returns uptime.",
   "base_commit": "none",
   "task": "Add a GET /health/ready endpoint to app.py that returns {\"status\": \"ready\", \"uptime\": <seconds>}.",
-  "replay_script": "mkdir -p src && cat > src/app.py <<'EOF'\nfrom fastapi import FastAPI\nimport time\napp = FastAPI()\nstart = time.time()\n\n@app.get(\"/health/ready\")\ndef ready():\n    return {\"status\": \"ready\", \"uptime\": time.time() - start}\nEOF",
-  "first_artifact": "src/app.py",
-  "acceptance": [
-    { "kind": "file_exists", "path": "src/app.py" },
-    { "kind": "file_contains", "path": "src/app.py", "text": "@app.get(\"/health/ready\")" },
-    { "kind": "file_contains", "path": "src/app.py", "text": "\"status\": \"ready\"" },
-    { "kind": "file_contains", "path": "src/app.py", "text": "uptime" }
-  ]
+  "draft_reason": "The repository snapshot is a placeholder; no independently replayable case exists yet."
 }

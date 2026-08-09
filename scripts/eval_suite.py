@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -77,7 +76,32 @@ def save_json(path: Path, data: Any) -> None:
 def list_cases() -> list[Path]:
     if not CASES_DIR.exists():
         return []
-    return [d for d in CASES_DIR.iterdir() if d.is_dir()]
+    return sorted(d for d in CASES_DIR.iterdir() if d.is_dir())
+
+
+def validate_draft_case(case_dir: Path, contract: dict[str, Any]) -> None:
+    runnable_fields = [
+        field_name
+        for field_name in ("replay_script", "first_artifact", "acceptance")
+        if contract.get(field_name)
+    ]
+    base = case_dir / "base.tar.gz"
+    if base.exists() and tarfile.is_tarfile(base):
+        runnable_fields.append("base.tar.gz")
+    if runnable_fields:
+        fields = ", ".join(runnable_fields)
+        raise ValueError(f"draft case {case_dir.name} appears runnable: {fields}")
+
+
+def list_runnable_cases() -> list[Path]:
+    runnable: list[Path] = []
+    for case_dir in list_cases():
+        contract = load_json(case_dir / "contract.json")
+        if contract.get("status", "active") == "draft":
+            validate_draft_case(case_dir, contract)
+            continue
+        runnable.append(case_dir)
+    return runnable
 
 
 def run_shell(cmd: list[str], cwd: Path, timeout: float = 120.0) -> tuple[int, str, str]:
@@ -184,6 +208,9 @@ def run_agent_task(contract: dict[str, Any], workdir: Path) -> EvalResult:
 
 def run_case(case_dir: Path) -> EvalResult:
     contract = load_json(case_dir / "contract.json")
+    if contract.get("status", "active") == "draft":
+        validate_draft_case(case_dir, contract)
+        raise ValueError(f"draft case {case_dir.name} cannot be replayed")
     workdir = materialize_case(case_dir)
     try:
         result = run_agent_task(contract, workdir)
@@ -193,7 +220,7 @@ def run_case(case_dir: Path) -> EvalResult:
 
 
 def run_all() -> EvalReport:
-    cases = list_cases()
+    cases = list_runnable_cases()
     results: list[EvalResult] = []
     for case_dir in cases:
         result = run_case(case_dir)

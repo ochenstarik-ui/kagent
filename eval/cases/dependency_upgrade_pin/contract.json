@@ -1,13 +1,9 @@
 {
   "id": "dependency_upgrade_pin",
+  "status": "draft",
   "category": "dependency_upgrade",
   "description": "Pin a dependency to a newer version in requirements.txt and verify the format.",
   "base_commit": "none",
   "task": "Update requirements.txt to pin requests>=2.32.0.",
-  "replay_script": "mkdir -p src && echo 'requests>=2.32.0' > src/requirements.txt",
-  "first_artifact": "src/requirements.txt",
-  "acceptance": [
-    { "kind": "file_exists", "path": "src/requirements.txt" },
-    { "kind": "file_contains", "path": "src/requirements.txt", "text": "requests>=2.32.0" }
-  ]
+  "draft_reason": "The repository snapshot is a placeholder; no independently replayable case exists yet."
 }
