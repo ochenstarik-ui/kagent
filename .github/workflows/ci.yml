@@ -47,5 +47,31 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install ruff pytest
-      - run: ruff check services/ --select E --ignore E501,E402
+      - run: ruff check services/ scripts/ tests/unit/ --select E --ignore E501,E402
+      - name: Run measurability unit tests
+        run: >-
+          python -m pytest
+          tests/unit/test_measurability.py
+          tests/unit/test_eval_suite.py
+          tests/unit/test_drift_check.py
+          tests/unit/test_roadmap_guard.py
       - run: python scripts/validate_repository.py
+      - run: python scripts/drift_check.py
+
+  measurability:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify generated roadmap
+        run: python scripts/roadmap_status.py --check --no-run-commands
+      - name: Validate draft eval contracts in provider-free replay mode
+        run: python scripts/eval_suite.py --replay
+      - name: Upload computed roadmap
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: computed-roadmap
+          path: docs/ROADMAP.md

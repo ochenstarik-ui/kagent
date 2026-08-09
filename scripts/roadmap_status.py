@@ -13,7 +13,9 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+import sys
 from dataclasses import dataclass
+from difflib import unified_diff
 from pathlib import Path
 from typing import Any
 
@@ -68,7 +70,10 @@ def run_command(command: str, timeout: float = 120.0) -> EvidenceResult:
             timeout=timeout,
         )
         passed = proc.returncode == 0
-        output = ((proc.stdout or "") + (proc.stderr or "")).strip()[-500:]
+        if passed:
+            output = ((proc.stdout or "") + (proc.stderr or "")).strip()[-500:]
+        else:
+            output = f"command failed with exit code {proc.returncode}"
     except subprocess.TimeoutExpired:
         passed = False
         output = "timeout"
@@ -118,6 +123,7 @@ def evaluate_capability(
     checks: dict[str, Any],
     ci_results: dict[str, Any] | None = None,
     evidence_cache: dict[str, EvidenceResult] | None = None,
+    execute_commands: bool = True,
 ) -> CapabilityStatus:
     results: list[EvidenceResult] = []
     for ev in cap.get("evidence", []):
@@ -127,8 +133,17 @@ def evaluate_capability(
         spec = checks.get(ev)
         if not spec:
             results.append(EvidenceResult(name=ev, passed=False, output="unknown evidence type", duration_ms=0.0))
-        elif spec.get("type") == "command":
+        elif spec.get("type") == "command" and execute_commands:
             results.append(run_command(spec["command"], timeout=spec.get("timeout", 120.0)))
+        elif spec.get("type") == "command":
+            results.append(
+                EvidenceResult(
+                    name=spec["command"],
+                    passed=False,
+                    output="command evidence not executed",
+                    duration_ms=0.0,
+                )
+            )
         elif spec.get("type") == "ci":
             job = spec.get("job", ev)
             ci_result = evaluate_ci_job(job, ci_results)
@@ -158,7 +173,7 @@ def evaluate_capability(
     return CapabilityStatus(capability=cap, evidence_results=results, missing_artifacts=missing)
 
 
-def build_roadmap(capabilities: dict[str, Any]) -> str:
+def build_roadmap(capabilities: dict[str, Any], execute_commands: bool = True) -> str:
     lines: list[str] = [
         "# Roadmap",
         "",
@@ -172,7 +187,16 @@ def build_roadmap(capabilities: dict[str, Any]) -> str:
     ci_results = capabilities.get("_ci_results")
 
     evidence_cache: dict[str, EvidenceResult] = {}
-    statuses = [evaluate_capability(c, checks, ci_results, evidence_cache) for c in caps]
+    statuses = [
+        evaluate_capability(
+            capability,
+            checks,
+            ci_results,
+            evidence_cache,
+            execute_commands=execute_commands,
+        )
+        for capability in caps
+    ]
     by_stage: dict[str, list[CapabilityStatus]] = {}
     for s in statuses:
         by_stage.setdefault(s.capability.get("stage", "unknown"), []).append(s)
@@ -206,10 +230,31 @@ def build_roadmap(capabilities: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def main() -> None:
+def roadmap_diff(expected: str, roadmap_path: Path = ROADMAP_PATH) -> str | None:
+    actual = roadmap_path.read_text(encoding="utf-8") if roadmap_path.exists() else ""
+    if actual == expected:
+        return None
+    return "".join(
+        unified_diff(
+            actual.splitlines(keepends=True),
+            expected.splitlines(keepends=True),
+            fromfile=str(roadmap_path),
+            tofile="generated ROADMAP.md",
+        )
+    )
+
+
+def main() -> int:
     parser = argparse.ArgumentParser(description="Generate computed ROADMAP.md")
     parser.add_argument("--ci-results", type=Path, help="Path to a JSON file with CI results")
-    parser.add_argument("--dry-run", action="store_true", help="Print to stdout instead of writing")
+    output_mode = parser.add_mutually_exclusive_group()
+    output_mode.add_argument("--dry-run", action="store_true", help="Print to stdout instead of writing")
+    output_mode.add_argument("--check", action="store_true", help="Fail if committed ROADMAP.md differs from generated content")
+    parser.add_argument(
+        "--no-run-commands",
+        action="store_true",
+        help="Generate deterministically without executing command evidence",
+    )
     args = parser.parse_args()
 
     capabilities = load_capabilities()
@@ -217,13 +262,21 @@ def main() -> None:
         with args.ci_results.open("r", encoding="utf-8") as f:
             capabilities["_ci_results"] = json.load(f)
 
-    roadmap = build_roadmap(capabilities)
-    if args.dry_run:
+    roadmap = build_roadmap(capabilities, execute_commands=not args.no_run_commands)
+    if args.check:
+        diff = roadmap_diff(roadmap)
+        if diff is not None:
+            print("ROADMAP CHECK FAILED", file=sys.stderr)
+            print(diff, file=sys.stderr, end="")
+            return 1
+        print("ROADMAP CHECK PASSED")
+    elif args.dry_run:
         print(roadmap)
     else:
         ROADMAP_PATH.write_text(roadmap, encoding="utf-8")
         print(f"Generated {ROADMAP_PATH}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
