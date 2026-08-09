@@ -1,0 +1,14 @@
+{
+  "id": "refactor_extract_helper",
+  "category": "refactor",
+  "description": "Extract a duplicated calculation into a helper function without changing behavior.",
+  "base_commit": "none",
+  "task": "Extract the area calculation into a function called compute_area and update both call sites.",
+  "replay_script": "mkdir -p src && cat > src/shapes.py <<'EOF'\ndef compute_area(width, height):\n    return width * height\n\nclass Rectangle:\n    def __init__(self, width, height):\n        self.width = width\n        self.height = height\n    def area(self):\n        return compute_area(self.width, self.height)\n\nclass Box:\n    def __init__(self, width, height):\n        self.width = width\n        self.height = height\n    def area(self):\n        return compute_area(self.width, self.height)\nEOF",
+  "first_artifact": "src/shapes.py",
+  "acceptance": [
+    { "kind": "file_exists", "path": "src/shapes.py" },
+    { "kind": "file_contains", "path": "src/shapes.py", "text": "def compute_area" },
+    { "kind": "command", "command": "python -c \"from src.shapes import Rectangle, Box; assert Rectangle(2,3).area()==6 and Box(2,3).area()==6\"" }
+  ]
+}

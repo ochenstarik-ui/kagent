@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "KAgent Eval Report",
+  "type": "object",
+  "required": [
+    "timestamp",
+    "autonomy_rate",
+    "rework_rate",
+    "average_repair_cycles",
+    "escape_defects_total",
+    "average_time_to_first_artifact_ms",
+    "average_cost_usd",
+    "policy_violation_attempts_total",
+    "results",
+    "gate_passed"
+  ],
+  "properties": {
+    "timestamp": { "type": "string", "format": "date-time" },
+    "autonomy_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+    "rework_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+    "average_repair_cycles": { "type": "number", "minimum": 0 },
+    "escape_defects_total": { "type": "integer", "minimum": 0 },
+    "average_time_to_first_artifact_ms": { "type": "number", "minimum": 0 },
+    "average_cost_usd": { "type": "number", "minimum": 0 },
+    "policy_violation_attempts_total": { "type": "integer", "minimum": 0 },
+    "results": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/EvalResult" }
+    },
+    "gate_passed": { "type": "boolean" }
+  },
+  "definitions": {
+    "EvalResult": {
+      "type": "object",
+      "required": [
+        "case_id",
+        "category",
+        "passed",
+        "autonomy",
+        "interventions",
+        "repair_cycles",
+        "escape_defects",
+        "time_to_first_artifact_ms",
+        "integrated_change_cost_usd",
+        "policy_violation_attempts",
+        "duration_ms",
+        "errors",
+        "artifacts"
+      ],
+      "properties": {
+        "case_id": { "type": "string" },
+        "category": { "type": "string", "enum": ["feature", "bugfix", "refactor", "dependency_upgrade", "security_fix"] },
+        "passed": { "type": "boolean" },
+        "autonomy": { "type": "boolean" },
+        "interventions": { "type": "integer", "minimum": 0 },
+        "repair_cycles": { "type": "integer", "minimum": 0 },
+        "escape_defects": { "type": "integer", "minimum": 0 },
+        "time_to_first_artifact_ms": { "type": "integer", "minimum": 0 },
+        "integrated_change_cost_usd": { "type": "number", "minimum": 0 },
+        "policy_violation_attempts": { "type": "integer", "minimum": 0 },
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "errors": { "type": "array", "items": { "type": "string" } },
+        "artifacts": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

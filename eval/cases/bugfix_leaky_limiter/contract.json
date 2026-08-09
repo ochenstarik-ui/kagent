@@ -1,0 +1,14 @@
+{
+  "id": "bugfix_leaky_limiter",
+  "category": "bugfix",
+  "description": "Fix a rate limiter that resets the counter instead of the window on first request.",
+  "base_commit": "none",
+  "task": "Fix the rate limiter so that a new client IP is counted correctly instead of resetting the window.",
+  "replay_script": "mkdir -p src && cat > src/limiter.py <<'EOF'\nimport time\n\nclass RateLimiter:\n    def __init__(self, max_requests=3):\n        self.max_requests = max_requests\n        self.clients = {}\n\n    def check(self, ip):\n        now = time.time()\n        if ip not in self.clients:\n            self.clients[ip] = (now, 1)\n            return True\n        start, count = self.clients[ip]\n        if now - start > 60:\n            self.clients[ip] = (now, 1)\n            return True\n        if count < self.max_requests:\n            self.clients[ip] = (start, count + 1)\n            return True\n        return False\nEOF",
+  "first_artifact": "src/limiter.py",
+  "acceptance": [
+    { "kind": "file_exists", "path": "src/limiter.py" },
+    { "kind": "file_contains", "path": "src/limiter.py", "text": "if ip not in self.clients" },
+    { "kind": "file_contains", "path": "src/limiter.py", "text": "self.clients[ip] = (now, 1)" }
+  ]
+}

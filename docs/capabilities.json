@@ -1,0 +1,343 @@
+{
+  "version": "0.9.1",
+  "schema": "capability-registry-v1",
+  "stages": [
+    { "id": "0.1", "name": "Foundation Bootstrap", "status": "complete" },
+    { "id": "0.2", "name": "Persistent Project and Task Lifecycle", "status": "complete" },
+    { "id": "0.3", "name": "Authentication and Policy Foundation", "status": "complete" },
+    { "id": "0.4", "name": "Single-Agent Runtime", "status": "complete" },
+    { "id": "0.5", "name": "Verified Coding Pipeline", "status": "complete" },
+    { "id": "0.6", "name": "Observability", "status": "complete" },
+    { "id": "0.7", "name": "Docker Compose", "status": "complete" },
+    { "id": "0.8", "name": "Complete", "status": "complete" },
+    { "id": "0.9", "name": "Future", "status": "in_progress" }
+  ],
+  "capabilities": [
+    {
+      "id": "monorepo.structure",
+      "stage": "0.1",
+      "name": "Clean modular monorepo",
+      "module": "root",
+      "owner": "root",
+      "evidence": ["repo_validation", "ci"],
+      "artifacts": ["README.md", "CHANGELOG.md", "AGENT_CHANGELOG.md", "docs/KAGENT_FULL_PRODUCT_SPEC.md", "docs/ARCHITECTURE.md", "docs/THREAT_MODEL.md", "packages/contracts/src/index.ts", "services/control-plane/src/main.ts", "services/gateway/src/main.rs"]
+    },
+    {
+      "id": "contracts.events",
+      "stage": "0.1",
+      "name": "Versioned contracts",
+      "module": "packages/contracts",
+      "owner": "packages/contracts",
+      "evidence": ["typecheck", "unit_tests", "ci"],
+      "artifacts": ["packages/contracts/src/index.ts", "packages/contracts/src/task.ts", "packages/contracts/src/event.ts", "packages/contracts/src/artifact.ts", "packages/contracts/src/reasoning.ts", "packages/contracts/src/task.test.ts", "packages/contracts/src/artifact.test.ts"]
+    },
+    {
+      "id": "control_plane.project_crud",
+      "stage": "0.2",
+      "name": "Project CRUD",
+      "module": "services/control-plane/src/routes.ts",
+      "owner": "services/control-plane",
+      "evidence": ["typecheck", "integration_tests", "ci"],
+      "artifacts": ["services/control-plane/src/routes.ts", "services/control-plane/src/domain.ts", "services/control-plane/src/store.ts", "services/control-plane/src/db.ts"]
+    },
+    {
+      "id": "control_plane.task_lifecycle",
+      "stage": "0.2",
+      "name": "Task lifecycle and state machine",
+      "module": "services/control-plane/src/routes.ts",
+      "owner": "services/control-plane",
+      "evidence": ["typecheck", "integration_tests", "ci"],
+      "artifacts": ["services/control-plane/src/domain.ts", "services/control-plane/src/store.ts", "services/control-plane/src/db.ts", "tests/integration/test_pg.py"]
+    },
+    {
+      "id": "control_plane.audit",
+      "stage": "0.2",
+      "name": "Append-only audit events",
+      "module": "services/control-plane/src/store.ts",
+      "owner": "services/control-plane",
+      "evidence": ["integration_tests", "ci"],
+      "artifacts": ["services/control-plane/src/store.ts", "services/control-plane/src/db.ts", "migrations/001_initial_schema.sql", "tests/integration/test_pg.py"]
+    },
+    {
+      "id": "auth.sessions",
+      "stage": "0.3",
+      "name": "JWT sessions and PBKDF2 passwords",
+      "module": "services/control-plane/src/auth.ts",
+      "owner": "services/control-plane",
+      "evidence": ["typecheck", "ci"],
+      "artifacts": ["services/control-plane/src/auth.ts", "services/control-plane/src/auth-db.ts", "services/control-plane/src/auth-routes.ts"]
+    },
+    {
+      "id": "auth.rbac",
+      "stage": "0.3",
+      "name": "RBAC membership",
+      "module": "services/control-plane/src/auth-db.ts",
+      "owner": "services/control-plane",
+      "evidence": ["typecheck", "integration_tests", "ci"],
+      "artifacts": ["services/control-plane/src/auth-db.ts", "migrations/002_auth.sql", "tests/integration/test_pg.py"]
+    },
+    {
+      "id": "auth.totp",
+      "stage": "0.8",
+      "name": "TOTP two-factor authentication",
+      "module": "services/auth/src/totp.py",
+      "owner": "services/auth",
+      "evidence": ["unit_tests", "ci"],
+      "artifacts": ["services/auth/src/totp.py", "tests/unit/test_totp.py"]
+    },
+    {
+      "id": "runtime.tools",
+      "stage": "0.4",
+      "name": "Agent runtime with sandboxed tools",
+      "module": "services/agent-runtime/src/runtime.py",
+      "owner": "services/agent-runtime",
+      "evidence": ["unit_tests", "ci"],
+      "artifacts": ["services/agent-runtime/src/runtime.py", "tests/unit/test_runtime.py"]
+    },
+    {
+      "id": "pipeline.cycle",
+      "stage": "0.5",
+      "name": "Verified coding pipeline with repair loop",
+      "module": "services/pipeline/src/pipeline.py",
+      "owner": "services/pipeline",
+      "evidence": ["unit_tests", "ci"],
+      "artifacts": ["services/pipeline/src/pipeline.py", "tests/unit/test_pipeline.py"]
+    },
+    {
+      "id": "observability.metrics",
+      "stage": "0.6",
+      "name": "Prometheus-compatible metrics",
+      "module": "services/observability/src/metrics.py",
+      "owner": "services/observability",
+      "evidence": ["unit_tests", "ci"],
+      "artifacts": ["services/observability/src/metrics.py", "tests/unit/test_metrics.py"]
+    },
+    {
+      "id": "observability.health",
+      "stage": "0.6",
+      "name": "Service health aggregation",
+      "module": "services/observability/src/metrics.py",
+      "owner": "services/observability",
+      "evidence": ["unit_tests", "ci"],
+      "artifacts": ["services/observability/src/metrics.py"]
+    },
+    {
+      "id": "infrastructure.docker",
+      "stage": "0.7",
+      "name": "Docker Compose infrastructure",
+      "module": "docker-compose.yml",
+      "owner": "root",
+      "evidence": ["ci", "compose_syntax"],
+      "artifacts": ["docker-compose.yml", ".env.example", "migrations/001_initial_schema.sql", "migrations/002_auth.sql"]
+    },
+    {
+      "id": "gateway.proxy",
+      "stage": "0.8",
+      "name": "Rust gateway reverse proxy",
+      "module": "services/gateway/src/main.rs",
+      "owner": "services/gateway",
+      "evidence": ["rust_tests", "rust_fmt", "rust_clippy", "ci"],
+      "artifacts": ["services/gateway/src/main.rs", "services/gateway/Cargo.toml"]
+    },
+    {
+      "id": "gateway.rate_limiter",
+      "stage": "0.8",
+      "name": "Request rate limiting",
+      "module": "services/gateway/src/main.rs",
+      "owner": "services/gateway",
+      "evidence": ["rust_tests", "rust_fmt", "rust_clippy", "ci"],
+      "artifacts": ["services/gateway/src/main.rs"]
+    },
+    {
+      "id": "nats.events",
+      "stage": "0.8",
+      "name": "NATS JetStream event streaming",
+      "module": "services/nats/src/events.py",
+      "owner": "services/nats",
+      "evidence": ["unit_tests", "ci"],
+      "artifacts": ["services/nats/src/events.py", "tests/unit/test_events.py"]
+    },
+    {
+      "id": "orchestrator.multi_agent",
+      "stage": "0.8",
+      "name": "Multi-agent orchestration",
+      "module": "services/orchestrator/src/orchestrator.py",
+      "owner": "services/orchestrator",
+      "evidence": ["unit_tests", "ci"],
+      "artifacts": ["services/orchestrator/src/orchestrator.py", "tests/unit/test_orchestrator.py"]
+    },
+    {
+      "id": "reasoning.routing",
+      "stage": "0.8",
+      "name": "Capability-first model routing",
+      "module": "services/reasoning-engine/src/engine.py",
+      "owner": "services/reasoning-engine",
+      "evidence": ["unit_tests", "ci"],
+      "artifacts": ["services/reasoning-engine/src/engine.py", "services/reasoning-engine/src/server.py", "packages/contracts/src/reasoning.ts"]
+    },
+    {
+      "id": "web.dashboard",
+      "stage": "0.8",
+      "name": "Web UI dashboard",
+      "module": "apps/web",
+      "owner": "apps/web",
+      "evidence": ["typecheck", "build", "ci"],
+      "artifacts": ["apps/web/app/page.tsx", "apps/web/app/monitor/page.tsx", "apps/web/app/layout.tsx", "apps/web/app/styles.css"]
+    },
+    {
+      "id": "measurability.registry",
+      "stage": "0.9",
+      "name": "Machine-readable capability registry",
+      "module": "docs/capabilities.json",
+      "owner": "root",
+      "evidence": ["drift_check", "ci"],
+      "artifacts": ["docs/capabilities.json"]
+    },
+    {
+      "id": "measurability.roadmap_status",
+      "stage": "0.9",
+      "name": "Computed roadmap status",
+      "module": "scripts/roadmap_status.py",
+      "owner": "root",
+      "evidence": ["drift_check", "ci"],
+      "artifacts": ["scripts/roadmap_status.py", "docs/ROADMAP.md"]
+    },
+    {
+      "id": "measurability.drift_check",
+      "stage": "0.9",
+      "name": "Spec drift check in CI",
+      "module": "scripts/drift_check.py",
+      "owner": "root",
+      "evidence": ["drift_check", "ci"],
+      "artifacts": ["scripts/drift_check.py", ".github/workflows/ci.yml"]
+    },
+    {
+      "id": "measurability.eval_suite",
+      "stage": "0.9",
+      "name": "Replayable eval suite",
+      "module": "scripts/eval_suite.py",
+      "owner": "root",
+      "evidence": ["eval_suite", "ci"],
+      "artifacts": ["scripts/eval_suite.py", "eval/", "docs/adr/0016-spec-drift-and-eval-integrity.md"]
+    }
+  ],
+  "evidence_checks": {
+    "typecheck": { "type": "command", "command": "pnpm typecheck", "allow_failure": false },
+    "unit_tests": { "type": "command", "command": "pnpm test", "allow_failure": false },
+    "rust_tests": { "type": "command", "command": "cargo test --manifest-path services/gateway/Cargo.toml", "allow_failure": false },
+    "rust_fmt": { "type": "command", "command": "cargo fmt --manifest-path services/gateway/Cargo.toml --check", "allow_failure": false },
+    "rust_clippy": { "type": "command", "command": "cargo clippy --manifest-path services/gateway/Cargo.toml --all-targets -- -D warnings", "allow_failure": false },
+    "integration_tests": { "type": "command", "command": "python tests/integration/test_pg.py", "allow_failure": false },
+    "repo_validation": { "type": "command", "command": "python scripts/validate_repository.py", "allow_failure": false },
+    "drift_check": { "type": "command", "command": "python scripts/drift_check.py", "allow_failure": false },
+    "eval_suite": { "type": "command", "command": "python scripts/eval_suite.py --replay", "allow_failure": false },
+    "ci": { "type": "ci", "allow_failure": false },
+    "compose_syntax": { "type": "command", "command": "docker compose config -q", "allow_failure": false }
+  },
+  "route_table": {
+    "gateway": [
+      "GET /health/live",
+      "ALL /api/control-plane/*",
+      "ALL /api/reasoning/*",
+      "ALL /health"
+    ],
+    "control-plane": [
+      "GET /health/live",
+      "GET /health/ready",
+      "GET /v1/projects",
+      "POST /v1/projects",
+      "GET /v1/projects/:id",
+      "PATCH /v1/projects/:id",
+      "GET /v1/tasks",
+      "POST /v1/tasks",
+      "GET /v1/tasks/:id",
+      "PATCH /v1/tasks/:id/status",
+      "GET /v1/audit",
+      "GET /v1/system/info",
+      "POST /v1/auth/register",
+      "POST /v1/auth/login",
+      "POST /v1/auth/refresh",
+      "POST /v1/auth/logout",
+      "POST /v1/auth/logout-all",
+      "GET /v1/auth/whoami",
+      "GET /v1/auth/sessions"
+    ],
+    "reasoning-engine": [
+      "GET /health/live",
+      "GET /health/ready",
+      "GET /v1/models",
+      "POST /v1/decide",
+      "POST /v1/execute",
+      "GET /v1/telemetry"
+    ],
+    "agent-runtime": [
+      "GET /health/live",
+      "GET /v1/tools",
+      "POST /v1/contexts",
+      "POST /v1/execute",
+      "POST /v1/run",
+      "GET /v1/contexts/:task_id/events",
+      "GET /v1/contexts/:task_id/status",
+      "DELETE /v1/contexts/:task_id"
+    ],
+    "pipeline": [
+      "GET /health/live",
+      "POST /v1/pipelines/execute",
+      "GET /v1/pipelines/:task_id",
+      "GET /v1/pipelines"
+    ],
+    "observability": [
+      "GET /health/live",
+      "GET /v1/health",
+      "GET /v1/metrics",
+      "GET /v1/alerts",
+      "POST /v1/metrics/record",
+      "GET /v1/dashboard"
+    ],
+    "orchestrator": [
+      "GET /health/live",
+      "POST /v1/agents/register",
+      "GET /v1/agents",
+      "GET /v1/agents/available",
+      "POST /v1/work",
+      "GET /v1/work",
+      "POST /v1/work/assign",
+      "POST /v1/work/complete",
+      "POST /v1/handoff",
+      "GET /v1/stats"
+    ],
+    "auth": [
+      "POST /v1/auth/totp/setup",
+      "POST /v1/auth/totp/verify",
+      "POST /v1/auth/totp/validate"
+    ],
+    "nats": [
+      "publish",
+      "subscribe"
+    ]
+  },
+  "entry_points": [
+    "services/gateway/src/main.rs",
+    "services/control-plane/src/main.ts",
+    "services/reasoning-engine/main.py",
+    "services/agent-runtime/src/runtime.py",
+    "services/pipeline/src/pipeline.py",
+    "services/observability/src/metrics.py",
+    "services/orchestrator/src/orchestrator.py",
+    "services/auth/src/totp.py",
+    "services/nats/src/events.py",
+    "apps/web/app/layout.tsx",
+    "scripts/validate_repository.py",
+    "scripts/roadmap_status.py",
+    "scripts/drift_check.py",
+    "scripts/eval_suite.py",
+    "tests/integration/test_pg.py"
+  ],
+  "forbidden_paths_for_product_tasks": [
+    "eval/",
+    "docs/capabilities.json",
+    "scripts/eval_suite.py",
+    "scripts/roadmap_status.py",
+    "scripts/drift_check.py"
+  ]
+}
