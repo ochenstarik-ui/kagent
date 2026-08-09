@@ -2,13 +2,17 @@ use axum::{
     Router,
     body::Body,
     extract::{ConnectInfo, State},
-    http::{HeaderMap, HeaderName, HeaderValue, Method, Request, StatusCode},
+    http::{HeaderMap, HeaderName, HeaderValue, Method, Request, StatusCode, Uri},
     response::{IntoResponse, Json, Response},
     routing::get,
 };
 use http_body_util::BodyExt;
+use hyper_util::{
+    client::legacy::Client,
+    rt::{TokioExecutor, TokioTimer},
+};
 use serde::Serialize;
-use std::{collections::HashMap, env, net::SocketAddr, sync::Arc, time::Duration};
+use std::{collections::HashMap, env, net::SocketAddr, str::FromStr, sync::Arc, time::Duration};
 use tokio::{net::TcpListener, sync::Mutex, time::Instant};
 use tower_http::{
     catch_panic::CatchPanicLayer, cors::CorsLayer, limit::RequestBodyLimitLayer,
@@ -61,6 +65,7 @@ impl RateLimiter {
 // ── Application State ─────────────────────
 
 struct AppState {
+    client: Client<hyper_util::client::legacy::connect::HttpConnector, axum::body::Body>,
     control_plane_url: String,
     reasoning_engine_url: String,
     request_limit_bytes: usize,
@@ -126,21 +131,22 @@ async fn proxy(
         return Err(StatusCode::NOT_FOUND);
     };
 
-    // Forward using reqwest because hyper-util's legacy Client is awkward in this setup
-    let body_bytes = req
-        .into_body()
+    // Build upstream request
+    let uri = Uri::from_str(&backend_url).map_err(|e| {
+        warn!(%e, "Invalid backend URI");
+        StatusCode::BAD_GATEWAY
+    })?;
+
+    let (_parts, body) = req.into_parts();
+    let body_bytes = body
         .collect()
         .await
         .map_err(|_| StatusCode::BAD_REQUEST)?
         .to_bytes();
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .build()
-        .map_err(|_| StatusCode::BAD_GATEWAY)?;
-
-    let resp = client
-        .request(method, backend_url)
+    let upstream_req = Request::builder()
+        .method(method)
+        .uri(uri)
         .header("x-request-id", &request_id)
         .header(
             "x-forwarded-for",
@@ -149,18 +155,24 @@ async fn proxy(
                 .and_then(|v| v.to_str().ok())
                 .unwrap_or("unknown"),
         )
-        .body(body_bytes)
-        .send()
-        .await
-        .map_err(|e| {
-            warn!(%e, "Backend unreachable");
-            StatusCode::BAD_GATEWAY
-        })?;
+        .body(Body::from(body_bytes))
+        .map_err(|_| StatusCode::BAD_GATEWAY)?;
+
+    // Forward
+    let resp = state.client.request(upstream_req).await.map_err(|e| {
+        warn!(%e, "Backend unreachable");
+        StatusCode::BAD_GATEWAY
+    })?;
 
     // Copy response
-    let status = StatusCode::from_u16(resp.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+    let status = resp.status();
     let resp_headers = resp.headers().clone();
-    let resp_body = resp.bytes().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+    let resp_body = resp
+        .into_body()
+        .collect()
+        .await
+        .map_err(|_| StatusCode::BAD_GATEWAY)?
+        .to_bytes();
 
     let mut response = Response::builder()
         .status(status)
@@ -239,6 +251,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or(10 * 1024 * 1024); // 10 MB
 
     let state = Arc::new(AppState {
+        client: Client::builder(TokioExecutor::new())
+            .timer(TokioTimer::new())
+            .pool_idle_timeout(Duration::from_secs(30))
+            .build_http(),
         control_plane_url: control_plane_url.trim_end_matches('/').to_owned(),
         reasoning_engine_url: reasoning_engine_url.trim_end_matches('/').to_owned(),
         request_limit_bytes,
