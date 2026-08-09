@@ -24,6 +24,9 @@ use uuid::Uuid;
 
 // ── Rate Limiter ──────────────────────────
 
+const DEFAULT_RATE_LIMIT_WINDOW_SECS: u64 = 60;
+const DEFAULT_RATE_LIMIT_MAX_REQUESTS: u32 = 120;
+
 #[derive(Clone)]
 struct RateLimiter {
     window: Duration,
@@ -40,24 +43,27 @@ impl RateLimiter {
         }
     }
 
-    async fn check(&self, client_ip: &str) -> bool {
+    async fn check(&self, client_ip: &str) -> (bool, u64) {
         let mut guard = self.clients.lock().await;
         let now = Instant::now();
 
         if let Some((start, count)) = guard.get_mut(client_ip) {
-            if now.duration_since(*start) > self.window {
+            let elapsed = now.duration_since(*start);
+            if elapsed > self.window {
                 *start = now;
                 *count = 1;
-                return true;
+                return (true, 0);
             }
             if *count >= self.max_requests {
-                return false;
+                let remaining = self.window.saturating_sub(elapsed);
+                let retry_after = remaining.as_secs().max(1);
+                return (false, retry_after);
             }
             *count += 1;
-            true
+            (true, 0)
         } else {
             guard.insert(client_ip.to_string(), (now, 1));
-            true
+            (true, 0)
         }
     }
 }
@@ -195,6 +201,7 @@ fn get_request_id(headers: &HeaderMap) -> String {
     headers
         .get("x-request-id")
         .and_then(|v| v.to_str().ok())
+        .filter(|s| !s.is_empty())
         .map(|s| s.to_string())
         .unwrap_or_else(|| Uuid::new_v4().to_string())
 }
@@ -213,9 +220,15 @@ async fn rate_limit_middleware(
         .map(|s| s.trim().to_string())
         .unwrap_or_else(|| addr.ip().to_string());
 
-    if !limiter.check(&client_ip).await {
+    let (allowed, retry_after) = limiter.check(&client_ip).await;
+    if !allowed {
         return (
             StatusCode::TOO_MANY_REQUESTS,
+            [(
+                HeaderName::from_static("retry-after"),
+                HeaderValue::from_str(&retry_after.to_string())
+                    .unwrap_or_else(|_| HeaderValue::from_static("60")),
+            )],
             Json(serde_json::json!({"error":"rate limit exceeded"})),
         )
             .into_response();
@@ -269,7 +282,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE])
         .allow_headers(tower_http::cors::Any);
 
-    let limiter = RateLimiter::new(60, 100);
+    let rate_limit_window_secs: u64 = env::var("GATEWAY_RATE_LIMIT_WINDOW_SECONDS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_RATE_LIMIT_WINDOW_SECS);
+    let rate_limit_max_requests: u32 = env::var("GATEWAY_RATE_LIMIT_MAX_REQUESTS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_RATE_LIMIT_MAX_REQUESTS);
+
+    let limiter = RateLimiter::new(rate_limit_window_secs, rate_limit_max_requests);
     tokio::spawn(cleanup_rate_limiter(limiter.clone()));
 
     let app = Router::new()
@@ -357,7 +379,7 @@ async fn shutdown_signal() {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_port;
+    use super::*;
 
     #[test]
     fn parses_valid_port() {
@@ -369,5 +391,79 @@ mod tests {
         assert!(parse_port("0").is_err());
         assert!(parse_port("70000").is_err());
         assert!(parse_port("abc").is_err());
+    }
+
+    #[test]
+    fn get_request_id_absent_generates_uuid() {
+        let headers = HeaderMap::new();
+        let id = get_request_id(&headers);
+        assert!(!id.is_empty());
+        assert!(Uuid::parse_str(&id).is_ok());
+    }
+
+    #[test]
+    fn get_request_id_empty_generates_uuid() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-request-id", HeaderValue::from_static(""));
+        let id = get_request_id(&headers);
+        assert!(!id.is_empty());
+        assert!(Uuid::parse_str(&id).is_ok());
+    }
+
+    #[test]
+    fn get_request_id_present_returns_value() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-request-id", HeaderValue::from_static("test-req-123"));
+        let id = get_request_id(&headers);
+        assert_eq!(id, "test-req-123");
+    }
+
+    #[tokio::test]
+    async fn rate_limiter_allows_under_limit() {
+        let limiter = RateLimiter::new(60, 2);
+        let (allowed1, _) = limiter.check("127.0.0.1").await;
+        let (allowed2, _) = limiter.check("127.0.0.1").await;
+        assert!(allowed1);
+        assert!(allowed2);
+    }
+
+    #[tokio::test]
+    async fn rate_limiter_blocks_over_limit_with_retry_after() {
+        let limiter = RateLimiter::new(60, 2);
+        limiter.check("127.0.0.1").await;
+        limiter.check("127.0.0.1").await;
+        let (allowed, retry_after) = limiter.check("127.0.0.1").await;
+        assert!(!allowed);
+        assert!(retry_after > 0 && retry_after <= 60);
+    }
+
+    #[tokio::test]
+    async fn rate_limiter_resets_after_window() {
+        let limiter = RateLimiter::new(1, 1);
+        let (allowed1, _) = limiter.check("127.0.0.1").await;
+        assert!(allowed1);
+        let (allowed2, _) = limiter.check("127.0.0.1").await;
+        assert!(!allowed2);
+
+        tokio::time::sleep(Duration::from_millis(1100)).await;
+        let (allowed3, _) = limiter.check("127.0.0.1").await;
+        assert!(allowed3);
+    }
+
+    #[tokio::test]
+    async fn rate_limiter_cleanup_evicts_expired_clients() {
+        let limiter = RateLimiter::new(1, 5);
+        limiter.check("127.0.0.1").await;
+        assert_eq!(limiter.clients.lock().await.len(), 1);
+
+        tokio::time::sleep(Duration::from_millis(1100)).await;
+
+        let now = Instant::now();
+        limiter
+            .clients
+            .lock()
+            .await
+            .retain(|_, (start, _)| now.duration_since(*start) <= limiter.window);
+        assert_eq!(limiter.clients.lock().await.len(), 0);
     }
 }
