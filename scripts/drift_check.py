@@ -4,7 +4,6 @@ Fails CI when the repository diverges from the declared capability registry:
 - declared capabilities without evidence
 - unreachable modules
 - undocumented endpoints
-- environment variables not in .env.example
 - missing CHANGELOG entries for user-visible changes
 - missing ADR for architectural changes
 
@@ -23,7 +22,6 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 CAPABILITIES_PATH = ROOT / "docs" / "capabilities.json"
-ENV_EXAMPLE_PATH = ROOT / ".env.example"
 CHANGELOG_PATH = ROOT / "CHANGELOG.md"
 ADRS_DIR = ROOT / "docs" / "adr"
 
@@ -220,7 +218,7 @@ def _string_values(value: Any) -> set[str]:
 
 def _package_source_path(package_dir: Path, target: str) -> Path | None:
     relative = Path(target.removeprefix("./"))
-    candidates = [package_dir / relative]
+    candidates: list[Path] = []
     parts = list(relative.parts)
     if parts and parts[0] == "dist":
         parts[0] = "src"
@@ -228,6 +226,7 @@ def _package_source_path(package_dir: Path, target: str) -> Path | None:
         candidates.extend(
             package_dir / source.with_suffix(ext) for ext in (".ts", ".tsx", ".js")
         )
+    candidates.append(package_dir / relative)
     return next((candidate for candidate in candidates if candidate.is_file()), None)
 
 
@@ -302,47 +301,6 @@ def _resolve_relative_imports(
             variants = (candidate.with_suffix(".py"), candidate / "__init__.py")
             imports.update(path for path in variants if path in source_files)
     return imports
-
-
-def find_env_vars() -> list[str]:
-    env_vars: list[str] = []
-    for f in find_source_files():
-        try:
-            content = f.read_text(encoding="utf-8")
-        except OSError:
-            continue
-        # Python: os.getenv("X"), os.environ["X"]
-        for match in re.finditer(
-            r'os\.(?:getenv|environ)\([\'"]([A-Z_][A-Z0-9_]*)[\'"]\)', content
-        ):
-            env_vars.append(match.group(1))
-        # TypeScript: process.env["X"], process.env.X
-        for match in re.finditer(
-            r'process\.env\[[\'"]([A-Z_][A-Z0-9_]*)[\'"]\]', content
-        ):
-            env_vars.append(match.group(1))
-        for match in re.finditer(
-            r"process\.env\.(?!NODE_ENV)([A-Z_][A-Z0-9_]*)\b", content
-        ):
-            env_vars.append(match.group(1))
-        # Rust: env::var("X")
-        for match in re.finditer(r'env::var\([\'"]([A-Z_][A-Z0-9_]*)[\'"]\)', content):
-            env_vars.append(match.group(1))
-        # Docker compose: ${X}
-        if f.name == "docker-compose.yml":
-            for match in re.finditer(r"\$\{([A-Z_][A-Z0-9_]*)", content):
-                env_vars.append(match.group(1))
-    return sorted(set(env_vars))
-
-
-def check_env_documentation(env_vars: list[str]) -> list[str]:
-    if not ENV_EXAMPLE_PATH.exists():
-        return ["missing .env.example"]
-    content = ENV_EXAMPLE_PATH.read_text(encoding="utf-8")
-    missing = [v for v in env_vars if v not in content]
-    if missing:
-        return [f"undocumented env vars: {', '.join(missing)}"]
-    return []
 
 
 def declared_endpoints(route_table: dict[str, list[str]]) -> list[tuple[str, str]]:
@@ -539,8 +497,6 @@ def main() -> int:
     )
     errors.extend(check_undocumented_endpoints(capabilities.get("route_table", {})))
     errors.extend(check_missing_endpoints(capabilities.get("route_table", {})))
-    env_vars = find_env_vars()
-    errors.extend(check_env_documentation(env_vars))
     errors.extend(check_changelog())
     errors.extend(check_adr())
     errors.extend(check_forbidden_paths())

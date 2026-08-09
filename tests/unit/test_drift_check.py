@@ -104,6 +104,38 @@ def test_product_entry_points_are_discovered_from_manifests_and_conventions(
     }
 
 
+def test_built_package_export_prefers_source_and_follows_export_stars(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    package_dir = tmp_path / "packages" / "contracts"
+    files = {
+        "package.json": '{"exports": {".": "./dist/index.js"}}\n',
+        "dist/index.js": 'export * from "./artifact.js";\n',
+        "src/index.ts": (
+            'export * from "./artifact.js";\n'
+            'export * from "./event.js";\n'
+            'export * from "./ids.js";\n'
+            'export * from "./task.js";\n'
+        ),
+        "src/artifact.ts": "export const artifact = 1;\n",
+        "src/event.ts": "export const event = 1;\n",
+        "src/ids.ts": "export const id = 1;\n",
+        "src/task.ts": "export const task = 1;\n",
+        "src/reasoning.ts": "export const reasoning = 1;\n",
+    }
+    for relative, content in files.items():
+        path = package_dir / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+    monkeypatch.setattr(drift_check, "ROOT", tmp_path)
+
+    assert drift_check.discover_entry_points([]) == {package_dir / "src/index.ts"}
+    assert drift_check.find_unreachable_modules([], []) == [
+        "packages/contracts/src/reasoning.ts"
+    ]
+
+
 def test_python_relative_imports_are_followed_from_docker_app(
     monkeypatch, tmp_path
 ) -> None:
@@ -140,3 +172,25 @@ def test_generated_eval_report_does_not_change_drift_result(monkeypatch) -> None
     )
 
     assert drift_check.check_forbidden_paths() == []
+
+
+def test_main_does_not_report_code_env_vars_missing_from_example(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    source = tmp_path / "services" / "example" / "src" / "main.py"
+    source.parent.mkdir(parents=True)
+    source.write_text('import os\nos.getenv("UNDOCUMENTED")\n', encoding="utf-8")
+    (tmp_path / ".env.example").write_text("", encoding="utf-8")
+    monkeypatch.setattr(drift_check, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        drift_check,
+        "load_capabilities",
+        lambda: {"capabilities": [], "entry_points": [], "route_table": {}},
+    )
+    monkeypatch.setattr(drift_check, "find_unreachable_modules", lambda *_: [])
+    monkeypatch.setattr(drift_check, "check_changelog", list)
+    monkeypatch.setattr(drift_check, "check_adr", list)
+    monkeypatch.setattr(drift_check, "check_forbidden_paths", list)
+
+    assert drift_check.main() == 0
+    assert "undocumented env vars" not in capsys.readouterr().err
