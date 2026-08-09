@@ -38,8 +38,7 @@
       "module": "services/control-plane/src/routes.ts",
       "owner": "services/control-plane",
       "evidence": ["typecheck", "integration_tests", "node_ci"],
-      "artifacts": ["services/control-plane/src/routes.ts", "services/control-plane/src/domain.ts", "services/control-plane/src/store.ts", "services/control-plane/src/db.ts"]
-    },
+      "artifacts": ["services/control-plane/src/routes.ts", "services/control-plane/src/domain.ts", "services/control-plane/src/db.ts", "services/control-plane/src/db.integration.test.ts"]    },
     {
       "id": "control_plane.task_lifecycle",
       "stage": "0.2",
@@ -47,17 +46,15 @@
       "module": "services/control-plane/src/routes.ts",
       "owner": "services/control-plane",
       "evidence": ["typecheck", "integration_tests", "node_ci"],
-      "artifacts": ["services/control-plane/src/domain.ts", "services/control-plane/src/store.ts", "services/control-plane/src/db.ts", "tests/integration/test_pg.py"]
-    },
+      "artifacts": ["services/control-plane/src/domain.ts", "services/control-plane/src/db.ts", "services/control-plane/src/db.integration.test.ts", "tests/integration/test_pg.py"]    },
     {
       "id": "control_plane.audit",
       "stage": "0.2",
       "name": "Append-only audit events",
-      "module": "services/control-plane/src/store.ts",
+      "module": "services/control-plane/src/db.ts",
       "owner": "services/control-plane",
       "evidence": ["integration_tests", "node_ci"],
-      "artifacts": ["services/control-plane/src/store.ts", "services/control-plane/src/db.ts", "migrations/001_initial_schema.sql", "tests/integration/test_pg.py"]
-    },
+      "artifacts": ["services/control-plane/src/db.ts", "services/control-plane/src/db.integration.test.ts", "migrations/001_initial_schema.sql", "tests/integration/test_pg.py"]    },
     {
       "id": "auth.sessions",
       "stage": "0.3",
@@ -224,6 +221,7 @@
   "evidence_checks": {
     "typecheck": { "type": "command", "command": "pnpm typecheck", "allow_failure": false },
     "unit_tests": { "type": "command", "command": "pnpm test", "allow_failure": false },
+    "build": { "type": "command", "command": "pnpm build", "allow_failure": false },
     "rust_tests": { "type": "command", "command": "cargo test --manifest-path services/gateway/Cargo.toml", "allow_failure": false },
     "rust_fmt": { "type": "command", "command": "cargo fmt --manifest-path services/gateway/Cargo.toml --check", "allow_failure": false },
     "rust_clippy": { "type": "command", "command": "cargo clippy --manifest-path services/gateway/Cargo.toml --all-targets -- -D warnings", "allow_failure": false },

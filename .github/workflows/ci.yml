@@ -75,3 +75,51 @@ jobs:
         with:
           name: computed-roadmap
           path: docs/ROADMAP.md
+
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: kagent
+          POSTGRES_USER: kagent
+          POSTGRES_PASSWORD: kagent
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Apply Database Migrations
+        env:
+          PGPASSWORD: kagent
+        run: |
+          psql -h localhost -U kagent -d kagent -f migrations/001_initial_schema.sql
+          psql -h localhost -U kagent -d kagent -f migrations/002_auth.sql
+      - name: Install dependencies
+        run: |
+          pnpm install --frozen-lockfile=false
+          pip install asyncpg pytest
+      - name: Run Integration Tests
+        env:
+          DATABASE_URL: postgres://kagent:kagent@localhost:5432/kagent
+        run: |
+          pnpm --filter @kagent/control-plane test
+          python tests/integration/test_pg.py
+
