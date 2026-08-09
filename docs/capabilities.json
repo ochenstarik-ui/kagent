@@ -19,7 +19,7 @@
       "name": "Clean modular monorepo",
       "module": "root",
       "owner": "root",
-      "evidence": ["repo_validation", "ci"],
+      "evidence": ["repo_validation", "node_ci", "rust_ci", "python_ci"],
       "artifacts": ["README.md", "CHANGELOG.md", "AGENT_CHANGELOG.md", "docs/KAGENT_FULL_PRODUCT_SPEC.md", "docs/ARCHITECTURE.md", "docs/THREAT_MODEL.md", "packages/contracts/src/index.ts", "services/control-plane/src/main.ts", "services/gateway/src/main.rs"]
     },
     {
@@ -28,7 +28,7 @@
       "name": "Versioned contracts",
       "module": "packages/contracts",
       "owner": "packages/contracts",
-      "evidence": ["typecheck", "unit_tests", "ci"],
+      "evidence": ["typecheck", "unit_tests", "node_ci"],
       "artifacts": ["packages/contracts/src/index.ts", "packages/contracts/src/task.ts", "packages/contracts/src/event.ts", "packages/contracts/src/artifact.ts", "packages/contracts/src/reasoning.ts", "packages/contracts/src/task.test.ts", "packages/contracts/src/artifact.test.ts"]
     },
     {
@@ -37,7 +37,7 @@
       "name": "Project CRUD",
       "module": "services/control-plane/src/routes.ts",
       "owner": "services/control-plane",
-      "evidence": ["typecheck", "integration_tests", "ci"],
+      "evidence": ["typecheck", "integration_tests", "node_ci"],
       "artifacts": ["services/control-plane/src/routes.ts", "services/control-plane/src/domain.ts", "services/control-plane/src/store.ts", "services/control-plane/src/db.ts"]
     },
     {
@@ -46,7 +46,7 @@
       "name": "Task lifecycle and state machine",
       "module": "services/control-plane/src/routes.ts",
       "owner": "services/control-plane",
-      "evidence": ["typecheck", "integration_tests", "ci"],
+      "evidence": ["typecheck", "integration_tests", "node_ci"],
       "artifacts": ["services/control-plane/src/domain.ts", "services/control-plane/src/store.ts", "services/control-plane/src/db.ts", "tests/integration/test_pg.py"]
     },
     {
@@ -55,7 +55,7 @@
       "name": "Append-only audit events",
       "module": "services/control-plane/src/store.ts",
       "owner": "services/control-plane",
-      "evidence": ["integration_tests", "ci"],
+      "evidence": ["integration_tests", "node_ci"],
       "artifacts": ["services/control-plane/src/store.ts", "services/control-plane/src/db.ts", "migrations/001_initial_schema.sql", "tests/integration/test_pg.py"]
     },
     {
@@ -64,7 +64,7 @@
       "name": "JWT sessions and PBKDF2 passwords",
       "module": "services/control-plane/src/auth.ts",
       "owner": "services/control-plane",
-      "evidence": ["typecheck", "ci"],
+      "evidence": ["typecheck", "node_ci"],
       "artifacts": ["services/control-plane/src/auth.ts", "services/control-plane/src/auth-db.ts", "services/control-plane/src/auth-routes.ts"]
     },
     {
@@ -73,7 +73,7 @@
       "name": "RBAC membership",
       "module": "services/control-plane/src/auth-db.ts",
       "owner": "services/control-plane",
-      "evidence": ["typecheck", "integration_tests", "ci"],
+      "evidence": ["typecheck", "integration_tests", "node_ci"],
       "artifacts": ["services/control-plane/src/auth-db.ts", "migrations/002_auth.sql", "tests/integration/test_pg.py"]
     },
     {
@@ -82,7 +82,7 @@
       "name": "TOTP two-factor authentication",
       "module": "services/auth/src/totp.py",
       "owner": "services/auth",
-      "evidence": ["unit_tests", "ci"],
+      "evidence": ["unit_tests", "python_ci"],
       "artifacts": ["services/auth/src/totp.py", "tests/unit/test_totp.py"]
     },
     {
@@ -91,7 +91,7 @@
       "name": "Agent runtime with sandboxed tools",
       "module": "services/agent-runtime/src/runtime.py",
       "owner": "services/agent-runtime",
-      "evidence": ["unit_tests", "ci"],
+      "evidence": ["unit_tests", "python_ci"],
       "artifacts": ["services/agent-runtime/src/runtime.py", "tests/unit/test_runtime.py"]
     },
     {
@@ -100,7 +100,7 @@
       "name": "Verified coding pipeline with repair loop",
       "module": "services/pipeline/src/pipeline.py",
       "owner": "services/pipeline",
-      "evidence": ["unit_tests", "ci"],
+      "evidence": ["unit_tests", "python_ci"],
       "artifacts": ["services/pipeline/src/pipeline.py", "tests/unit/test_pipeline.py"]
     },
     {
@@ -109,7 +109,7 @@
       "name": "Prometheus-compatible metrics",
       "module": "services/observability/src/metrics.py",
       "owner": "services/observability",
-      "evidence": ["unit_tests", "ci"],
+      "evidence": ["unit_tests", "python_ci"],
       "artifacts": ["services/observability/src/metrics.py", "tests/unit/test_metrics.py"]
     },
     {
@@ -118,7 +118,7 @@
       "name": "Service health aggregation",
       "module": "services/observability/src/metrics.py",
       "owner": "services/observability",
-      "evidence": ["unit_tests", "ci"],
+      "evidence": ["unit_tests", "python_ci"],
       "artifacts": ["services/observability/src/metrics.py"]
     },
     {
@@ -127,7 +127,7 @@
       "name": "Docker Compose infrastructure",
       "module": "docker-compose.yml",
       "owner": "root",
-      "evidence": ["ci", "compose_syntax"],
+      "evidence": ["compose_syntax"],
       "artifacts": ["docker-compose.yml", ".env.example", "migrations/001_initial_schema.sql", "migrations/002_auth.sql"]
     },
     {
@@ -136,7 +136,7 @@
       "name": "Rust gateway reverse proxy",
       "module": "services/gateway/src/main.rs",
       "owner": "services/gateway",
-      "evidence": ["rust_tests", "rust_fmt", "rust_clippy", "ci"],
+      "evidence": ["rust_tests", "rust_fmt", "rust_clippy", "rust_ci"],
       "artifacts": ["services/gateway/src/main.rs", "services/gateway/Cargo.toml"]
     },
     {
@@ -145,7 +145,7 @@
       "name": "Request rate limiting",
       "module": "services/gateway/src/main.rs",
       "owner": "services/gateway",
-      "evidence": ["rust_tests", "rust_fmt", "rust_clippy", "ci"],
+      "evidence": ["rust_tests", "rust_fmt", "rust_clippy", "rust_ci"],
       "artifacts": ["services/gateway/src/main.rs"]
     },
     {
@@ -154,7 +154,7 @@
       "name": "NATS JetStream event streaming",
       "module": "services/nats/src/events.py",
       "owner": "services/nats",
-      "evidence": ["unit_tests", "ci"],
+      "evidence": ["unit_tests", "python_ci"],
       "artifacts": ["services/nats/src/events.py", "tests/unit/test_events.py"]
     },
     {
@@ -163,7 +163,7 @@
       "name": "Multi-agent orchestration",
       "module": "services/orchestrator/src/orchestrator.py",
       "owner": "services/orchestrator",
-      "evidence": ["unit_tests", "ci"],
+      "evidence": ["unit_tests", "python_ci"],
       "artifacts": ["services/orchestrator/src/orchestrator.py", "tests/unit/test_orchestrator.py"]
     },
     {
@@ -172,7 +172,7 @@
       "name": "Capability-first model routing",
       "module": "services/reasoning-engine/src/engine.py",
       "owner": "services/reasoning-engine",
-      "evidence": ["unit_tests", "ci"],
+      "evidence": ["unit_tests", "python_ci"],
       "artifacts": ["services/reasoning-engine/src/engine.py", "services/reasoning-engine/src/server.py", "packages/contracts/src/reasoning.ts"]
     },
     {
@@ -181,7 +181,7 @@
       "name": "Web UI dashboard",
       "module": "apps/web",
       "owner": "apps/web",
-      "evidence": ["typecheck", "build", "ci"],
+      "evidence": ["typecheck", "build", "node_ci"],
       "artifacts": ["apps/web/app/page.tsx", "apps/web/app/monitor/page.tsx", "apps/web/app/layout.tsx", "apps/web/app/styles.css"]
     },
     {
@@ -190,7 +190,7 @@
       "name": "Machine-readable capability registry",
       "module": "docs/capabilities.json",
       "owner": "root",
-      "evidence": ["drift_check", "ci"],
+      "evidence": ["drift_check", "measurability_ci"],
       "artifacts": ["docs/capabilities.json"]
     },
     {
@@ -199,7 +199,7 @@
       "name": "Computed roadmap status",
       "module": "scripts/roadmap_status.py",
       "owner": "root",
-      "evidence": ["drift_check", "ci"],
+      "evidence": ["drift_check", "measurability_ci"],
       "artifacts": ["scripts/roadmap_status.py", "docs/ROADMAP.md"]
     },
     {
@@ -208,7 +208,7 @@
       "name": "Spec drift check in CI",
       "module": "scripts/drift_check.py",
       "owner": "root",
-      "evidence": ["drift_check", "ci"],
+      "evidence": ["drift_check", "measurability_ci"],
       "artifacts": ["scripts/drift_check.py", ".github/workflows/ci.yml"]
     },
     {
@@ -217,7 +217,7 @@
       "name": "Replayable eval suite",
       "module": "scripts/eval_suite.py",
       "owner": "root",
-      "evidence": ["eval_suite", "ci"],
+      "evidence": ["eval_suite", "measurability_ci"],
       "artifacts": ["scripts/eval_suite.py", "eval/"]
     }
   ],
@@ -231,7 +231,11 @@
     "repo_validation": { "type": "command", "command": "python scripts/validate_repository.py", "allow_failure": false },
     "drift_check": { "type": "command", "command": "python scripts/drift_check.py", "allow_failure": false },
     "eval_suite": { "type": "command", "command": "python scripts/eval_suite.py --replay", "allow_failure": false },
-    "ci": { "type": "ci", "allow_failure": false },
+    "build": { "type": "command", "command": "pnpm build", "allow_failure": false },
+    "node_ci": { "type": "ci", "job": "node", "allow_failure": false },
+    "rust_ci": { "type": "ci", "job": "rust", "allow_failure": false },
+    "python_ci": { "type": "ci", "job": "python", "allow_failure": false },
+    "measurability_ci": { "type": "ci", "job": "measurability", "allow_failure": false },
     "compose_syntax": { "type": "command", "command": "docker compose config -q", "allow_failure": false }
   },
   "route_table": {
@@ -320,13 +324,15 @@
     "services/gateway/src/main.rs",
     "services/control-plane/src/main.ts",
     "services/reasoning-engine/main.py",
+    "services/reasoning-engine/src/server.py",
     "services/agent-runtime/src/runtime.py",
     "services/pipeline/src/pipeline.py",
     "services/observability/src/metrics.py",
     "services/orchestrator/src/orchestrator.py",
-    "services/auth/src/totp.py",
-    "services/nats/src/events.py",
     "apps/web/app/layout.tsx",
+    "apps/web/app/page.tsx",
+    "apps/web/app/monitor/page.tsx",
+    "packages/contracts/src/index.ts",
     "scripts/validate_repository.py",
     "scripts/roadmap_status.py",
     "scripts/drift_check.py",
