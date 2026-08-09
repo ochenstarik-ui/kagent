@@ -42,6 +42,10 @@ class CapabilityStatus:
             return False
         return all(r.passed for r in self.evidence_results) and not self.missing_artifacts
 
+    @property
+    def status(self) -> str:
+        return "verified" if self.passed else "unverified"
+
 
 def load_capabilities() -> dict[str, Any]:
     with CAPABILITIES_PATH.open("r", encoding="utf-8") as f:
@@ -59,10 +63,12 @@ def run_command(command: str, timeout: float = 120.0) -> EvidenceResult:
             cwd=ROOT,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
         )
         passed = proc.returncode == 0
-        output = (proc.stdout + proc.stderr).strip()[-500:]
+        output = ((proc.stdout or "") + (proc.stderr or "")).strip()[-500:]
     except subprocess.TimeoutExpired:
         passed = False
         output = "timeout"
@@ -79,23 +85,74 @@ def check_artifact(path: str) -> bool:
     return (ROOT / path).exists()
 
 
-def evaluate_capability(cap: dict[str, Any], checks: dict[str, Any]) -> CapabilityStatus:
+def evaluate_ci_job(job: str, ci_results: dict[str, Any] | None) -> EvidenceResult:
+    jobs = ci_results.get("jobs", {}) if ci_results else {}
+    result = jobs.get(job) if isinstance(jobs, dict) else None
+    if result is None and ci_results:
+        result = ci_results.get(job)
+    if result is None:
+        return EvidenceResult(
+            name=job,
+            passed=False,
+            output=f"CI result unavailable for job: {job}",
+            duration_ms=0.0,
+        )
+
+    if isinstance(result, dict):
+        conclusion = result.get("conclusion", result.get("status", "unknown"))
+    elif isinstance(result, bool):
+        conclusion = "success" if result else "failure"
+    else:
+        conclusion = str(result)
+    passed = str(conclusion).lower() in {"success", "passed"}
+    return EvidenceResult(
+        name=job,
+        passed=passed,
+        output=f"CI job {job}: {conclusion}",
+        duration_ms=0.0,
+    )
+
+
+def evaluate_capability(
+    cap: dict[str, Any],
+    checks: dict[str, Any],
+    ci_results: dict[str, Any] | None = None,
+    evidence_cache: dict[str, EvidenceResult] | None = None,
+) -> CapabilityStatus:
     results: list[EvidenceResult] = []
     for ev in cap.get("evidence", []):
+        if evidence_cache is not None and ev in evidence_cache:
+            results.append(evidence_cache[ev])
+            continue
         spec = checks.get(ev)
         if not spec:
             results.append(EvidenceResult(name=ev, passed=False, output="unknown evidence type", duration_ms=0.0))
-            continue
-        if spec.get("type") == "command":
+        elif spec.get("type") == "command":
             results.append(run_command(spec["command"], timeout=spec.get("timeout", 120.0)))
         elif spec.get("type") == "ci":
-            # CI evidence is accepted as passing when running inside CI; locally it is a soft check.
-            in_ci = bool(ROOT.joinpath("ci-results.json").exists() or ROOT.joinpath("CI").exists())
-            results.append(EvidenceResult(name=ev, passed=in_ci, output="ci marker check", duration_ms=0.0))
+            job = spec.get("job", ev)
+            ci_result = evaluate_ci_job(job, ci_results)
+            results.append(
+                EvidenceResult(
+                    name=ev,
+                    passed=ci_result.passed,
+                    output=ci_result.output,
+                    duration_ms=ci_result.duration_ms,
+                )
+            )
         elif spec.get("type") == "manual":
-            results.append(EvidenceResult(name=ev, passed=True, output="manual verification required", duration_ms=0.0))
+            results.append(
+                EvidenceResult(
+                    name=ev,
+                    passed=False,
+                    output="manual claims are not verifiable evidence",
+                    duration_ms=0.0,
+                )
+            )
         else:
             results.append(EvidenceResult(name=ev, passed=False, output=f"unknown evidence type: {spec.get('type')}", duration_ms=0.0))
+        if evidence_cache is not None:
+            evidence_cache[ev] = results[-1]
 
     missing = [a for a in cap.get("artifacts", []) if not check_artifact(a)]
     return CapabilityStatus(capability=cap, evidence_results=results, missing_artifacts=missing)
@@ -112,8 +169,10 @@ def build_roadmap(capabilities: dict[str, Any]) -> str:
     stages = capabilities.get("stages", [])
     caps = capabilities.get("capabilities", [])
     checks = capabilities.get("evidence_checks", {})
+    ci_results = capabilities.get("_ci_results")
 
-    statuses = [evaluate_capability(c, checks) for c in caps]
+    evidence_cache: dict[str, EvidenceResult] = {}
+    statuses = [evaluate_capability(c, checks, ci_results, evidence_cache) for c in caps]
     by_stage: dict[str, list[CapabilityStatus]] = {}
     for s in statuses:
         by_stage.setdefault(s.capability.get("stage", "unknown"), []).append(s)
@@ -123,20 +182,20 @@ def build_roadmap(capabilities: dict[str, Any]) -> str:
         sname = stage["name"]
         stage_caps = by_stage.get(sid, [])
         if not stage_caps:
-            status = "⏳"
+            status = "unverified"
         elif all(c.passed for c in stage_caps):
-            status = "✅"
+            status = "verified"
         elif any(c.passed for c in stage_caps):
-            status = "🟡"
+            status = "partially verified"
         else:
-            status = "❌"
+            status = "unverified"
 
-        lines.append(f"## {sid} — {sname} {status}")
+        lines.append(f"## {sid} — {sname} [{status}]")
         lines.append("")
         for cs in stage_caps:
             cap = cs.capability
-            marker = "✅" if cs.passed else "❌"
-            lines.append(f"- {marker} [{cap.get('id')}] {cap.get('name')}")
+            marker = "x" if cs.passed else " "
+            lines.append(f"- [{marker}] [{cap.get('id')}] {cap.get('name')} — {cs.status}")
             for er in cs.evidence_results:
                 if not er.passed:
                     lines.append(f"    - {er.name}: {er.output[:120]}")

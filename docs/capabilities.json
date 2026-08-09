@@ -2,15 +2,15 @@
   "version": "0.9.1",
   "schema": "capability-registry-v1",
   "stages": [
-    { "id": "0.1", "name": "Foundation Bootstrap", "status": "complete" },
-    { "id": "0.2", "name": "Persistent Project and Task Lifecycle", "status": "complete" },
-    { "id": "0.3", "name": "Authentication and Policy Foundation", "status": "complete" },
-    { "id": "0.4", "name": "Single-Agent Runtime", "status": "complete" },
-    { "id": "0.5", "name": "Verified Coding Pipeline", "status": "complete" },
-    { "id": "0.6", "name": "Observability", "status": "complete" },
-    { "id": "0.7", "name": "Docker Compose", "status": "complete" },
-    { "id": "0.8", "name": "Complete", "status": "complete" },
-    { "id": "0.9", "name": "Future", "status": "in_progress" }
+    { "id": "0.1", "name": "Foundation Bootstrap" },
+    { "id": "0.2", "name": "Persistent Project and Task Lifecycle" },
+    { "id": "0.3", "name": "Authentication and Policy Foundation" },
+    { "id": "0.4", "name": "Single-Agent Runtime" },
+    { "id": "0.5", "name": "Verified Coding Pipeline" },
+    { "id": "0.6", "name": "Observability" },
+    { "id": "0.7", "name": "Docker Compose" },
+    { "id": "0.8", "name": "Complete" },
+    { "id": "0.9", "name": "Future" }
   ],
   "capabilities": [
     {
@@ -218,7 +218,7 @@
       "module": "scripts/eval_suite.py",
       "owner": "root",
       "evidence": ["eval_suite", "ci"],
-      "artifacts": ["scripts/eval_suite.py", "eval/", "docs/adr/0016-spec-drift-and-eval-integrity.md"]
+      "artifacts": ["scripts/eval_suite.py", "eval/"]
     }
   ],
   "evidence_checks": {

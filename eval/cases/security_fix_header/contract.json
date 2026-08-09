@@ -1,14 +1,9 @@
 {
   "id": "security_fix_header",
+  "status": "draft",
   "category": "security_fix",
   "description": "Add a security header middleware that sets X-Content-Type-Options: nosniff.",
   "base_commit": "none",
   "task": "Add a middleware that sets X-Content-Type-Options to nosniff on every response.",
-  "replay_script": "mkdir -p src && cat > src/app.py <<'EOF'\nfrom fastapi import FastAPI, Request\nfrom fastapi.responses import Response\napp = FastAPI()\n@app.middleware('http')\nasync def security_headers(request: Request, call_next):\n    response = await call_next(request)\n    response.headers['X-Content-Type-Options'] = 'nosniff'\n    return response\nEOF",
-  "first_artifact": "src/app.py",
-  "acceptance": [
-    { "kind": "file_exists", "path": "src/app.py" },
-    { "kind": "file_contains", "path": "src/app.py", "text": "X-Content-Type-Options" },
-    { "kind": "file_contains", "path": "src/app.py", "text": "nosniff" }
-  ]
+  "draft_reason": "The repository snapshot is a placeholder; no independently replayable case exists yet."
 }
