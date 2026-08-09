@@ -1,0 +1,9 @@
+{
+  "autonomy_rate": 1.0,
+  "escape_defects_total": 0,
+  "rework_rate": 0.0,
+  "average_repair_cycles": 0.0,
+  "average_time_to_first_artifact_ms": 0.0,
+  "average_cost_usd": 0.0,
+  "policy_violation_attempts_total": 0
+}

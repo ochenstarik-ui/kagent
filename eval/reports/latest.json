@@ -1,0 +1,98 @@
+{
+  "timestamp": "2026-08-06T12:57:10Z",
+  "autonomy_rate": 1.0,
+  "rework_rate": 0.0,
+  "average_repair_cycles": 0.0,
+  "escape_defects_total": 0,
+  "average_time_to_first_artifact_ms": 849.8,
+  "average_cost_usd": 0.0,
+  "policy_violation_attempts_total": 0,
+  "results": [
+    {
+      "case_id": "bugfix_leaky_limiter",
+      "category": "bugfix",
+      "passed": true,
+      "autonomy": true,
+      "interventions": 0,
+      "repair_cycles": 0,
+      "escape_defects": 0,
+      "time_to_first_artifact_ms": 868,
+      "integrated_change_cost_usd": 0.0,
+      "policy_violation_attempts": 0,
+      "duration_ms": 869,
+      "errors": [],
+      "artifacts": [
+        "src/limiter.py"
+      ]
+    },
+    {
+      "case_id": "dependency_upgrade_pin",
+      "category": "dependency_upgrade",
+      "passed": true,
+      "autonomy": true,
+      "interventions": 0,
+      "repair_cycles": 0,
+      "escape_defects": 0,
+      "time_to_first_artifact_ms": 791,
+      "integrated_change_cost_usd": 0.0,
+      "policy_violation_attempts": 0,
+      "duration_ms": 801,
+      "errors": [],
+      "artifacts": [
+        "src/requirements.txt"
+      ]
+    },
+    {
+      "case_id": "feature_add_endpoint",
+      "category": "feature",
+      "passed": true,
+      "autonomy": true,
+      "interventions": 0,
+      "repair_cycles": 0,
+      "escape_defects": 0,
+      "time_to_first_artifact_ms": 1852,
+      "integrated_change_cost_usd": 0.0,
+      "policy_violation_attempts": 0,
+      "duration_ms": 1853,
+      "errors": [],
+      "artifacts": [
+        "src/app.py"
+      ]
+    },
+    {
+      "case_id": "refactor_extract_helper",
+      "category": "refactor",
+      "passed": true,
+      "autonomy": true,
+      "interventions": 0,
+      "repair_cycles": 0,
+      "escape_defects": 0,
+      "time_to_first_artifact_ms": 388,
+      "integrated_change_cost_usd": 0.0,
+      "policy_violation_attempts": 0,
+      "duration_ms": 807,
+      "errors": [],
+      "artifacts": [
+        "src/shapes.py"
+      ]
+    },
+    {
+      "case_id": "security_fix_header",
+      "category": "security_fix",
+      "passed": true,
+      "autonomy": true,
+      "interventions": 0,
+      "repair_cycles": 0,
+      "escape_defects": 0,
+      "time_to_first_artifact_ms": 350,
+      "integrated_change_cost_usd": 0.0,
+      "policy_violation_attempts": 0,
+      "duration_ms": 351,
+      "errors": [],
+      "artifacts": [
+        "src/app.py"
+      ]
+    }
+  ],
+  "gate_passed": true
+}
