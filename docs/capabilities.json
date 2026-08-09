@@ -223,6 +223,7 @@
   ],
   "evidence_checks": {
     "typecheck": { "type": "command", "command": "pnpm typecheck", "allow_failure": false },
+    "build": { "type": "command", "command": "pnpm build", "allow_failure": false },
     "unit_tests": { "type": "command", "command": "pnpm test", "allow_failure": false },
     "rust_tests": { "type": "command", "command": "cargo test --manifest-path services/gateway/Cargo.toml", "allow_failure": false },
     "rust_fmt": { "type": "command", "command": "cargo fmt --manifest-path services/gateway/Cargo.toml --check", "allow_failure": false },
@@ -320,18 +321,10 @@
     "services/gateway/src/main.rs",
     "services/control-plane/src/main.ts",
     "services/reasoning-engine/main.py",
-    "services/agent-runtime/src/runtime.py",
-    "services/pipeline/src/pipeline.py",
-    "services/observability/src/metrics.py",
-    "services/orchestrator/src/orchestrator.py",
-    "services/auth/src/totp.py",
-    "services/nats/src/events.py",
-    "apps/web/app/layout.tsx",
     "scripts/validate_repository.py",
     "scripts/roadmap_status.py",
     "scripts/drift_check.py",
-    "scripts/eval_suite.py",
-    "tests/integration/test_pg.py"
+    "scripts/eval_suite.py"
   ],
   "forbidden_paths_for_product_tasks": [
     "eval/",

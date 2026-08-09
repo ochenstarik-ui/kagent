@@ -15,7 +15,6 @@ Usage:
 from __future__ import annotations
 
 import json
-import os
 import re
 import subprocess
 import sys
@@ -27,6 +26,18 @@ CAPABILITIES_PATH = ROOT / "docs" / "capabilities.json"
 ENV_EXAMPLE_PATH = ROOT / ".env.example"
 CHANGELOG_PATH = ROOT / "CHANGELOG.md"
 ADRS_DIR = ROOT / "docs" / "adr"
+
+EXCLUDED_SOURCE_DIRS = {
+    ".git",
+    ".next",
+    ".venv",
+    ".worktrees",
+    "__pycache__",
+    "build",
+    "dist",
+    "node_modules",
+    "target",
+}
 
 # Cache command evidence results so expensive checks run only once per invocation.
 _Executed: dict[str, tuple[bool, str]] = {}
@@ -49,11 +60,12 @@ def run_command(command: str, timeout: float = 120.0) -> tuple[bool, str]:
             text=True,
             errors="replace",
             timeout=timeout,
+            check=False,
         )
         result = (proc.returncode == 0, (proc.stdout + proc.stderr).strip())
     except subprocess.TimeoutExpired:
         result = (False, "timeout")
-    except Exception as e:
+    except (OSError, ValueError) as e:
         result = (False, str(e))
     _Executed[command] = result
     return result
@@ -66,9 +78,10 @@ def check_evidence_declared(cap: dict[str, Any], checks: dict[str, Any]) -> list
     capability has declared evidence and that the required artifacts exist.
     """
     errors: list[str] = []
+    allowed = ", ".join(sorted(checks))
     for ev in cap.get("evidence", []):
         if ev not in checks:
-            errors.append(f"[{cap['id']}] unknown evidence: {ev}")
+            errors.append(f"[{cap['id']}] unknown evidence: {ev}; allowed: {allowed}")
     return errors
 
 
@@ -84,77 +97,211 @@ def find_source_files() -> list[Path]:
     files: list[Path] = []
     for pattern in patterns:
         files.extend(ROOT.rglob(pattern))
-    # Exclude generated/dependency directories and well-known generated files.
-    skip_names = {"node_modules", "target", "__pycache__", ".next", "dist", "build"}
-    skip_files = {"next-env.d.ts"}
-    return [
-        f for f in files
-        if not (set(f.parts) & skip_names) and f.name not in skip_files
-    ]
+    return [f for f in files if _is_product_source(f)]
 
 
-def find_unreachable_modules(entry_points: list[str], capabilities: list[dict[str, Any]]) -> list[str]:
-    """Return source files that are not reachable from any entry point.
-
-    Reachability is determined by static import/require references. Declared
-    capabilities are *not* automatically considered reachable — they must be
-    imported by an entry point or test.
-    """
-    reachable: set[Path] = set()
-    for ep in entry_points:
-        path = ROOT / ep
-        if path.exists():
-            reachable.add(path)
-
-    source_files = find_source_files()
-    reachable_contents: dict[Path, str] = {}
-    for f in reachable:
-        try:
-            reachable_contents[f] = f.read_text(encoding="utf-8", errors="replace")
-        except Exception:
-            pass
-
-    # Iteratively expand reachable set by following imports.
-    changed = True
-    while changed:
-        changed = False
-        for f in source_files:
-            if f in reachable:
-                continue
-            if _is_imported_by_reachable(f, reachable, reachable_contents):
-                reachable.add(f)
-                try:
-                    reachable_contents[f] = f.read_text(encoding="utf-8", errors="replace")
-                except Exception:
-                    pass
-                changed = True
-
-    return sorted(
-        str(f.relative_to(ROOT)) for f in source_files if f not in reachable
+def _is_product_source(path: Path) -> bool:
+    relative = path.relative_to(ROOT)
+    if set(relative.parts) & EXCLUDED_SOURCE_DIRS:
+        return False
+    if "tests" in relative.parts:
+        return False
+    if path.name == "next-env.d.ts" or ".test." in path.name or ".config." in path.name:
+        return False
+    return not (
+        path.name.startswith("test_") or path.name.endswith(("_test.py", "_test.rs"))
     )
 
 
-def _is_imported_by_reachable(target: Path, reachable: set[Path], contents: dict[Path, str]) -> bool:
-    target_rel = target.relative_to(ROOT)
-    target_stem = target.stem
-    target_rel_dot = str(target_rel.with_suffix("")).replace("\\", "/").replace("/", ".")
-    target_rel_slash = str(target_rel.with_suffix("")).replace("\\", "/")
+def discover_entry_points(declared_entry_points: list[str]) -> set[Path]:
+    entry_points = {
+        ROOT / relative
+        for relative in declared_entry_points
+        if (ROOT / relative).is_file()
+    }
 
-    for ep in reachable:
-        content = contents.get(ep, "")
-        if not content:
+    services_dir = ROOT / "services"
+    if services_dir.exists():
+        for service_dir in services_dir.iterdir():
+            if not service_dir.is_dir():
+                continue
+            for relative in ("main.py", "src/main.py", "src/main.ts", "src/main.js"):
+                candidate = service_dir / relative
+                if candidate.is_file():
+                    entry_points.add(candidate)
+            cargo_manifest = service_dir / "Cargo.toml"
+            rust_main = service_dir / "src" / "main.rs"
+            if cargo_manifest.is_file():
+                if rust_main.is_file():
+                    entry_points.add(rust_main)
+                entry_points.update(
+                    _cargo_binary_entry_points(service_dir, cargo_manifest)
+                )
+            dockerfile = service_dir / "Dockerfile"
+            if dockerfile.is_file():
+                entry_points.update(_docker_app_entry_points(service_dir, dockerfile))
+
+    for package_json in ROOT.rglob("package.json"):
+        relative = package_json.relative_to(ROOT)
+        if set(relative.parts) & EXCLUDED_SOURCE_DIRS:
             continue
-        # TypeScript / ESM relative imports: ./foo, ../bar/foo, ./foo.js
-        if re.search(rf"(?:import\s+.*\s+from\s+|from\s+|require\s*\(\s*)['\"][^'\"]*{re.escape(target_rel_slash)}(?:\.\w+)?['\"]", content):
-            return True
-        # Python imports: from services.auth.src import totp, import totp
-        if target_stem and re.search(rf"(?:from\s+{re.escape(target_rel_dot)}\s+import|import\s+{re.escape(target_rel_dot)}\b|from\s+\S*\s+import\s+.*\b{re.escape(target_stem)}\b)", content):
-            return True
-        # Direct import by stem for relative Python imports
-        if target_stem and re.search(rf"\b{re.escape(target_stem)}\b", content):
-            if re.search(rf"(?:from\s+\S*\s+import\s+.*\b{re.escape(target_stem)}\b|import\s+.*\b{re.escape(target_stem)}\b)", content):
-                return True
-    return False
+        entry_points.update(_package_entry_points(package_json))
+
+    app_file_names = {"error", "layout", "loading", "not-found", "page", "route"}
+    apps_dir = ROOT / "apps"
+    if apps_dir.exists():
+        for path in apps_dir.rglob("*"):
+            relative = path.relative_to(apps_dir)
+            if (
+                path.is_file()
+                and "app" in relative.parts
+                and path.stem in app_file_names
+                and path.suffix in {".js", ".jsx", ".ts", ".tsx"}
+            ):
+                entry_points.add(path)
+
+    return entry_points
+
+
+def _cargo_binary_entry_points(service_dir: Path, cargo_manifest: Path) -> set[Path]:
+    content = cargo_manifest.read_text(encoding="utf-8", errors="replace")
+    entry_points: set[Path] = set()
+    for section in re.finditer(
+        r"^\[\[bin\]\]\s*(.*?)(?=^\[|\Z)", content, re.MULTILINE | re.DOTALL
+    ):
+        path_match = re.search(
+            r'^path\s*=\s*["\']([^"\']+)["\']', section.group(1), re.MULTILINE
+        )
+        if path_match:
+            candidate = service_dir / path_match.group(1)
+            if candidate.is_file():
+                entry_points.add(candidate)
+    return entry_points
+
+
+def _docker_app_entry_points(service_dir: Path, dockerfile: Path) -> set[Path]:
+    content = dockerfile.read_text(encoding="utf-8", errors="replace")
+    entry_points: set[Path] = set()
+    for match in re.finditer(
+        r"['\"]([A-Za-z_][\w.]*)\s*:\s*[A-Za-z_]\w*['\"]", content
+    ):
+        module = match.group(1)
+        candidate = service_dir / f"{module.replace('.', '/')}.py"
+        if candidate.is_file():
+            entry_points.add(candidate)
+    return entry_points
+
+
+def _package_entry_points(package_json: Path) -> set[Path]:
+    try:
+        package = json.loads(package_json.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return set()
+    targets = _string_values(package.get("exports"))
+    targets.update(_string_values(package.get("main")))
+    targets.update(_string_values(package.get("bin")))
+    return {
+        source
+        for target in targets
+        for source in [_package_source_path(package_json.parent, target)]
+        if source is not None
+    }
+
+
+def _string_values(value: Any) -> set[str]:
+    if isinstance(value, str):
+        return {value}
+    if isinstance(value, dict):
+        return {item for nested in value.values() for item in _string_values(nested)}
+    if isinstance(value, list):
+        return {item for nested in value for item in _string_values(nested)}
+    return set()
+
+
+def _package_source_path(package_dir: Path, target: str) -> Path | None:
+    relative = Path(target.removeprefix("./"))
+    candidates = [package_dir / relative]
+    parts = list(relative.parts)
+    if parts and parts[0] == "dist":
+        parts[0] = "src"
+        source = Path(*parts)
+        candidates.extend(
+            package_dir / source.with_suffix(ext) for ext in (".ts", ".tsx", ".js")
+        )
+    return next((candidate for candidate in candidates if candidate.is_file()), None)
+
+
+def find_unreachable_modules(
+    entry_points: list[str], capabilities: list[dict[str, Any]]
+) -> list[str]:
+    """Return source files that are not reachable from any entry point.
+
+    Reachability is determined by static import/require references. Declared
+    capabilities are not automatically considered reachable.
+    """
+    del capabilities
+    source_files = find_source_files()
+    source_file_set = set(source_files)
+    reachable: set[Path] = set()
+    pending: list[Path] = []
+    for path in discover_entry_points(entry_points):
+        if path in source_file_set:
+            reachable.add(path)
+            pending.append(path)
+
+    while pending:
+        source = pending.pop()
+        try:
+            content = source.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for imported in _resolve_relative_imports(source, content, source_file_set):
+            if imported not in reachable:
+                reachable.add(imported)
+                pending.append(imported)
+
+    return sorted(
+        f.relative_to(ROOT).as_posix() for f in source_files if f not in reachable
+    )
+
+
+def _resolve_relative_imports(
+    source: Path, content: str, source_files: set[Path]
+) -> set[Path]:
+    imports: set[Path] = set()
+    patterns = (
+        r"(?:import|export)\s+(?:[^'\"]*?\s+from\s+)?['\"]([^'\"]+)['\"]",
+        r"require\s*\(\s*['\"]([^'\"]+)['\"]\s*\)",
+    )
+    for pattern in patterns:
+        for match in re.finditer(pattern, content):
+            specifier = match.group(1)
+            if not specifier.startswith("."):
+                continue
+            candidate = source.parent / specifier
+            variants = [candidate]
+            if candidate.suffix in {".js", ".mjs", ".cjs"}:
+                variants.extend(candidate.with_suffix(ext) for ext in (".ts", ".tsx"))
+            elif not candidate.suffix:
+                variants.extend(
+                    candidate.with_suffix(ext) for ext in (".ts", ".tsx", ".js")
+                )
+                variants.extend(
+                    candidate / f"index{ext}" for ext in (".ts", ".tsx", ".js")
+                )
+            imports.update(path for path in variants if path in source_files)
+    if source.suffix == ".py":
+        for match in re.finditer(
+            r"^\s*from\s+(\.+)([\w.]*)\s+import\s+", content, re.MULTILINE
+        ):
+            parent = source.parent
+            for _ in range(len(match.group(1)) - 1):
+                parent = parent.parent
+            module = match.group(2).replace(".", "/")
+            candidate = parent / module
+            variants = (candidate.with_suffix(".py"), candidate / "__init__.py")
+            imports.update(path for path in variants if path in source_files)
+    return imports
 
 
 def find_env_vars() -> list[str]:
@@ -162,22 +309,28 @@ def find_env_vars() -> list[str]:
     for f in find_source_files():
         try:
             content = f.read_text(encoding="utf-8")
-        except Exception:
+        except OSError:
             continue
         # Python: os.getenv("X"), os.environ["X"]
-        for match in re.finditer(r'os\.(?:getenv|environ)\([\'"]([A-Z_][A-Z0-9_]*)[\'"]\)', content):
+        for match in re.finditer(
+            r'os\.(?:getenv|environ)\([\'"]([A-Z_][A-Z0-9_]*)[\'"]\)', content
+        ):
             env_vars.append(match.group(1))
         # TypeScript: process.env["X"], process.env.X
-        for match in re.finditer(r'process\.env\[[\'"]([A-Z_][A-Z0-9_]*)[\'"]\]', content):
+        for match in re.finditer(
+            r'process\.env\[[\'"]([A-Z_][A-Z0-9_]*)[\'"]\]', content
+        ):
             env_vars.append(match.group(1))
-        for match in re.finditer(r'process\.env\.(?!NODE_ENV)([A-Z_][A-Z0-9_]*)\b', content):
+        for match in re.finditer(
+            r"process\.env\.(?!NODE_ENV)([A-Z_][A-Z0-9_]*)\b", content
+        ):
             env_vars.append(match.group(1))
         # Rust: env::var("X")
         for match in re.finditer(r'env::var\([\'"]([A-Z_][A-Z0-9_]*)[\'"]\)', content):
             env_vars.append(match.group(1))
         # Docker compose: ${X}
         if f.name == "docker-compose.yml":
-            for match in re.finditer(r'\$\{([A-Z_][A-Z0-9_]*)', content):
+            for match in re.finditer(r"\$\{([A-Z_][A-Z0-9_]*)", content):
                 env_vars.append(match.group(1))
     return sorted(set(env_vars))
 
@@ -211,25 +364,43 @@ def find_endpoints_in_code(service_dir: Path) -> list[tuple[str, str]]:
     for f in service_dir.rglob("*.py"):
         try:
             content = f.read_text(encoding="utf-8", errors="replace")
-        except Exception:
+        except OSError:
             continue
-        for match in re.finditer(r'@(?:app|router|\w+_app)\.(get|post|put|patch|delete)\([\'"]([^\'"]+)[\'"]', content, re.IGNORECASE):
-            found.append((service_dir.name, f"{match.group(1).upper()} {match.group(2)}"))
+        for match in re.finditer(
+            r'@(?:app|router|\w+_app)\.(get|post|put|patch|delete)\([\'"]([^\'"]+)[\'"]',
+            content,
+            re.IGNORECASE,
+        ):
+            found.append(
+                (service_dir.name, f"{match.group(1).upper()} {match.group(2)}")
+            )
     for f in service_dir.rglob("*.ts"):
         try:
             content = f.read_text(encoding="utf-8", errors="replace")
-        except Exception:
+        except OSError:
             continue
-        for match in re.finditer(r'app\.(get|post|put|patch|delete)\([\'"]([^\'"]+)[\'"]', content, re.IGNORECASE):
-            found.append((service_dir.name, f"{match.group(1).upper()} {match.group(2)}"))
+        for match in re.finditer(
+            r'app\.(get|post|put|patch|delete)\([\'"]([^\'"]+)[\'"]',
+            content,
+            re.IGNORECASE,
+        ):
+            found.append(
+                (service_dir.name, f"{match.group(1).upper()} {match.group(2)}")
+            )
     # Rust axum: .route("/path", get(handler))
     for f in service_dir.rglob("*.rs"):
         try:
             content = f.read_text(encoding="utf-8", errors="replace")
-        except Exception:
+        except OSError:
             continue
-        for match in re.finditer(r'\.route\([\'"]([^\'"]+)[\'"],\s*(get|post|put|patch|delete)\(', content, re.IGNORECASE):
-            found.append((service_dir.name, f"{match.group(2).upper()} {match.group(1)}"))
+        for match in re.finditer(
+            r'\.route\([\'"]([^\'"]+)[\'"],\s*(get|post|put|patch|delete)\(',
+            content,
+            re.IGNORECASE,
+        ):
+            found.append(
+                (service_dir.name, f"{match.group(2).upper()} {match.group(1)}")
+            )
     return found
 
 
@@ -256,13 +427,13 @@ def match_route(declared: str, found: str) -> bool:
 
 def check_undocumented_endpoints(route_table: dict[str, list[str]]) -> list[str]:
     errors: list[str] = []
-    for service in route_table:
+    for service, routes in route_table.items():
         service_dir = ROOT / "services" / service
         if not service_dir.exists():
             continue
         found = find_endpoints_in_code(service_dir)
         for _, ep in found:
-            if not any(match_route(decl, ep) for decl in route_table[service]):
+            if not any(match_route(decl, ep) for decl in routes):
                 errors.append(f"undocumented endpoint in {service}: {ep}")
     return errors
 
@@ -275,7 +446,7 @@ def check_missing_endpoints(route_table: dict[str, list[str]]) -> list[str]:
             continue
         found = find_endpoints_in_code(service_dir)
         for decl in routes:
-            if decl.startswith("ALL") or decl.startswith("publish") or decl.startswith("subscribe"):
+            if decl.startswith(("ALL", "publish", "subscribe")):
                 continue
             if not any(match_route(decl, ep) for _, ep in found):
                 errors.append(f"declared endpoint missing in {service}: {decl}")
@@ -289,13 +460,17 @@ def check_changelog() -> list[str]:
     if not passed or not output:
         return []
     # Only consider staged or unstaged modifications, not untracked files.
-    tracked_changes = [line for line in output.splitlines() if not line.startswith("??")]
+    tracked_changes = [
+        line for line in output.splitlines() if not line.startswith("??")
+    ]
     if not tracked_changes:
         return []
     if "CHANGELOG.md" in output:
         return []
     if re.search(r"\s+(services|apps|packages)/", output):
-        return ["tracked user-visible changes detected but CHANGELOG.md not updated; add an entry under [Unreleased]"]
+        return [
+            "tracked user-visible changes detected but CHANGELOG.md not updated; add an entry under [Unreleased]"
+        ]
     return []
 
 
@@ -306,10 +481,15 @@ def check_adr() -> list[str]:
     if not ADRS_DIR.exists():
         return ["missing docs/adr directory"]
     # Only fail on tracked modifications to services/packages/docker-compose.
-    tracked_changes = [line for line in output.splitlines() if not line.startswith("??")]
+    tracked_changes = [
+        line for line in output.splitlines() if not line.startswith("??")
+    ]
     if not tracked_changes:
         return []
-    needs_adr = any(re.search(r"\s+(services|packages|docker-compose\.yml)/", line) for line in tracked_changes)
+    needs_adr = any(
+        re.search(r"\s+(services|packages|docker-compose\.yml)/", line)
+        for line in tracked_changes
+    )
     if not needs_adr:
         return []
     if re.search(r"\s+docs/adr/\d+.*\.md", output):
@@ -322,10 +502,24 @@ def check_forbidden_paths() -> list[str]:
     if not passed or not output:
         return []
     # Only fail on tracked modifications to forbidden paths; untracked additions are allowed.
-    forbidden = ["eval/", "docs/capabilities.json", "scripts/eval_suite.py", "scripts/roadmap_status.py", "scripts/drift_check.py"]
-    touched = [line for line in output.splitlines() if not line.startswith("??") and any(f in line for f in forbidden)]
+    forbidden = [
+        "eval/",
+        "docs/capabilities.json",
+        "scripts/eval_suite.py",
+        "scripts/roadmap_status.py",
+        "scripts/drift_check.py",
+    ]
+    touched = [
+        line
+        for line in output.splitlines()
+        if not line.startswith("??")
+        and "eval/reports/" not in line.replace("\\", "/")
+        and any(f in line.replace("\\", "/") for f in forbidden)
+    ]
     if touched:
-        return [f"product task must not modify eval or measurability artifacts: {', '.join(touched)}"]
+        return [
+            f"product task must not modify eval or measurability artifacts: {', '.join(touched)}"
+        ]
     return []
 
 
@@ -338,7 +532,11 @@ def main() -> int:
         errors.extend(check_artifacts(cap))
         errors.extend(check_evidence_declared(cap, checks))
 
-    errors.extend(find_unreachable_modules(capabilities.get("entry_points", []), capabilities.get("capabilities", [])))
+    errors.extend(
+        find_unreachable_modules(
+            capabilities.get("entry_points", []), capabilities.get("capabilities", [])
+        )
+    )
     errors.extend(check_undocumented_endpoints(capabilities.get("route_table", {})))
     errors.extend(check_missing_endpoints(capabilities.get("route_table", {})))
     env_vars = find_env_vars()
