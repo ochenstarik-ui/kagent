@@ -10,6 +10,7 @@
 - Refactored TOTP authentication to separate unit-testable policy from PostgreSQL persistence adapter, fixing cross-instance replay issues and atomic one-time challenges.
 
 ### Added
+- Agent Runtime unprivileged execution sandbox using bubblewrap (bwrap), enforcing workspace limits, preventing network access, and dropping secrets.
 - Added recovery codes capability for TOTP, including generate and login endpoints, generating 10 hashed 128-bit codes with atomic revocation and secure double-use rejection.
 
 - Исправлено поведение Pipeline и Reasoning Engine: ответы без 2xx считаются hard error без silent fallback (кроме fallback внутри Reasoning Engine, который работает по-прежнему), а failed TEST создает попытку REPAIR с последующим TEST, лимит исчерпания которого требует HUMAN_REQUIRED решения.

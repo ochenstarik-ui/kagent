@@ -1,5 +1,6 @@
 FROM python:3.12-slim
 WORKDIR /app
+RUN apt-get update && apt-get install -y bubblewrap && rm -rf /var/lib/apt/lists/*
 COPY services/agent_runtime/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY services/agent_runtime/src/ ./src/

@@ -6,6 +6,7 @@
 - 4 GB RAM minimum (8 GB recommended)
 - 20 GB disk space
 - Linux server (Ubuntu 22.04+ recommended) or macOS
+- User namespace support enabled in kernel (required for `bwrap` sandbox isolation)
 
 ## 2. Quick Start
 

@@ -25,7 +25,7 @@
 |---|---|
 | Credential disclosure | No tracked secrets; runtime secret injection; planned vault |
 | Prompt injection | Untrusted-input classification; capability policy; isolated tools |
-| Arbitrary host command execution | No shell in the bootstrap; later allowlisted sandbox tools |
+| Arbitrary host command execution | Agent capabilities execute in an unprivileged `bwrap` sandbox with strict mount/network isolation |
 | Cross-project data access | Project-scoped identifiers and authorization checks |
 | Event spoofing | Service identity and signed/enveloped events in later increment |
 | Audit tampering | Append-only model now; hash chain before production |
@@ -41,7 +41,6 @@ The bootstrap is not production-ready and does not yet provide:
 - user authentication;
 - encryption at rest;
 - mTLS;
-- sandbox execution;
 - credential vault;
 - hash-chained audit;
 - production network policies.
