@@ -1,4 +1,11 @@
 {
   "version": 1,
-  "entries": []
+  "entries": [
+    {
+      "path": "services/pipeline/src/git_manager.py",
+      "reason": "New module for P5; will be imported from pipeline.py when workspace integration is wired in P7",
+      "expires": "2026-11-10",
+      "follow_up_task": "p7-e2e-delivery"
+    }
+  ]
 }
