@@ -462,8 +462,8 @@ class PipelineEngine:
                             parsed = json.loads(content[start:end+1])
                             step.tool = parsed.get("tool", step.tool)
                             step.params = parsed.get("params", step.params)
-                        except Exception:
-                            pass # fallback to step defaults
+                        except Exception as e:
+                            raise ValueError(f"Malformed JSON from model: {content}") from e
 
                     # Execute tool via runtime
                     if step.tool:
@@ -479,7 +479,7 @@ class PipelineEngine:
 
                     if review_passed:
                         step.status = StepStatus.PASSED
-                    elif step.phase in (PipelinePhase.REPAIR, PipelinePhase.DEVELOP):
+                    elif step.phase in (PipelinePhase.TEST, PipelinePhase.REPAIR, PipelinePhase.DEVELOP):
                         # Try repair
                         result.repair_cycles += 1
                         step.repair_attempts += 1
@@ -492,7 +492,18 @@ class PipelineEngine:
                                 "file_write",
                                 {},
                             )
-                            result.steps.insert(result.steps.index(step) + 1, repair_step)
+                            insert_index = result.steps.index(step) + 1
+                            result.steps.insert(insert_index, repair_step)
+                            
+                            if step.phase == PipelinePhase.TEST:
+                                new_test_step = PipelineStep(
+                                    PipelinePhase.TEST,
+                                    "Verify repair fix",
+                                    step.tool,
+                                    step.params,
+                                )
+                                result.steps.insert(insert_index + 1, new_test_step)
+                                
                             step.status = StepStatus.FAILED
                         else:
                             step.status = StepStatus.FAILED

@@ -218,7 +218,6 @@ class ReasoningEngine:
         request_id = hashlib.sha256(
             json.dumps({
                 "capability": request.capability.value,
-                "ts": time.time()
             }).encode()
         ).hexdigest()[:12]
         
@@ -409,7 +408,7 @@ def create_default_engine() -> ReasoningEngine:
         model_name="kimi-k2.7-code",
         capabilities=[
             Capability.CODE_GENERATION, Capability.CODE_REVIEW,
-            Capability.REASONING, Capability.ANALYSIS, Capability.CHAT
+            Capability.REASONING, Capability.ANALYSIS, Capability.CHAT, Capability.PLANNING
         ],
         price_per_1k_input=0.0015,
         price_per_1k_output=0.006,
