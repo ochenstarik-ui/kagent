@@ -1,4 +1,29 @@
 {
   "version": 1,
-  "entries": []
+  "entries": [
+    {
+      "path": "services/__init__.py",
+      "reason": "Test collection requirement",
+      "expires": "2026-12-31",
+      "follow_up_task": "t_cleanup_tests"
+    },
+    {
+      "path": "services/auth/__init__.py",
+      "reason": "Test collection requirement",
+      "expires": "2026-12-31",
+      "follow_up_task": "t_cleanup_tests"
+    },
+    {
+      "path": "services/auth/src/__init__.py",
+      "reason": "Test collection requirement",
+      "expires": "2026-12-31",
+      "follow_up_task": "t_cleanup_tests"
+    },
+    {
+      "path": "services/auth/src/totp.py",
+      "reason": "Restored for test_totp.py which was not deleted",
+      "expires": "2026-12-31",
+      "follow_up_task": "t_delete_test_totp"
+    }
+  ]
 }
