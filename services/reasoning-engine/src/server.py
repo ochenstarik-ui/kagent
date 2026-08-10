@@ -30,6 +30,11 @@ app.add_middleware(
 
 engine = create_default_engine()
 
+import time
+# request_id -> (expiry_time, decision)
+DECISION_CACHE: dict[str, tuple[float, Any]] = {}
+
+
 
 # ═══════════════════════════════════════════════════
 # Request/Response models
@@ -79,6 +84,7 @@ class ExecuteResponse(BaseModel):
     cost_usd: float
     latency_ms: int
     error: Optional[str] = None
+    content: Optional[str] = None
 
 
 class ModelInfoResponse(BaseModel):
@@ -148,6 +154,14 @@ async def decide_model(request: DecideRequest):
     
     decision = await engine.decide(internal)
     
+    # Cache the decision for 5 minutes
+    now = time.time()
+    DECISION_CACHE[decision.request_id] = (now + 300, decision)
+    # Cleanup expired entries
+    for k in list(DECISION_CACHE.keys()):
+        if DECISION_CACHE[k][0] < now:
+            del DECISION_CACHE[k]
+    
     return DecideResponse(
         request_id=decision.request_id,
         selected=ModelResult(
@@ -177,17 +191,22 @@ async def decide_model(request: DecideRequest):
 
 @app.post("/v1/execute", response_model=ExecuteResponse)
 async def execute_model(request: ExecuteRequest):
-    # Simulated execute — in real impl, look up the prior decision
-    execution = engine.telemetry[-1] if engine.telemetry else None
+    entry = DECISION_CACHE.get(request.request_id)
+    if not entry or entry[0] < time.time():
+        raise HTTPException(status_code=404, detail="Decision not found or expired")
+    
+    decision = entry[1]
+    execution = await engine.execute(decision, request.messages)
     
     return ExecuteResponse(
-        success=execution.success if execution else False,
-        model_id=execution.model_id if execution else "unknown",
-        tokens_input=execution.tokens_input if execution else 0,
-        tokens_output=execution.tokens_output if execution else 0,
-        cost_usd=execution.cost_usd if execution else 0.0,
-        latency_ms=execution.latency_ms if execution else 0,
-        error=execution.error_message if execution else "No execution found",
+        success=execution.success,
+        model_id=execution.model_id,
+        tokens_input=execution.tokens_input,
+        tokens_output=execution.tokens_output,
+        cost_usd=execution.cost_usd,
+        latency_ms=execution.latency_ms,
+        error=execution.error_message,
+        content=execution.content,
     )
 
 
