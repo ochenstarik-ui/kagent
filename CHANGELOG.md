@@ -37,6 +37,7 @@
 ### Changed
 
 - Python-пакет Agent Runtime перенесён в импортируемый путь `services/agent_runtime`; Docker Compose, capability registry и обязательная Python CI-проверка используют тот же путь.
+- Внутренние сервисы больше не публикуют HTTP-порты на хост; Gateway проксирует observability, а вызывающие действия runtime и pipeline требуют общий служебный секрет.
 - Полное ТЗ приведено к разработке с чистого листа без этапа миграции legacy-кода.
 - Definition of Done расширена проверками `test-diff-policy` и `mutation-check` и лимитами `unapproved_test_modifications` и `minimum_mutation_score`.
 - В roadmap добавлено предупреждение, что статусы этапов 0.1–0.8 проставлены вручную и не подтверждены доказательствами выполнения.

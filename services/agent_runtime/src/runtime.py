@@ -7,6 +7,7 @@ import asyncio
 import hashlib
 import json
 import os
+import secrets
 import signal
 import subprocess
 import sys
@@ -281,11 +282,25 @@ class AgentRuntime:
 # FastAPI Server
 # ═══════════════════════════════════════════════════════════════════════
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 app = FastAPI(title="KAgent Runtime", version="0.4.0")
 runtime = AgentRuntime()
+SERVICE_SECRET_ENV = "KAGENT_SERVICE_SECRET"
+SERVICE_SECRET_HEADER = "x-kagent-service-secret"
+UNAUTHENTICATED_PATHS = frozenset({"/health/live", "/health/ready"})
+
+
+@app.middleware("http")
+async def require_service_secret(request: Request, call_next):
+    if request.url.path not in UNAUTHENTICATED_PATHS:
+        expected = os.getenv(SERVICE_SECRET_ENV, "").encode()
+        provided = request.headers.get(SERVICE_SECRET_HEADER, "").encode()
+        if not expected or not provided or not secrets.compare_digest(provided, expected):
+            return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+    return await call_next(request)
 
 
 class CreateContextRequest(BaseModel):
@@ -352,7 +367,7 @@ async def run_pipeline(req: RunPipelineRequest, background: BackgroundTasks):
     async def _run():
         await runtime.run(req.task_id, req.steps)
     
-    background.add_task(lambda: asyncio.create_task(_run()))
+    background.add_task(_run)
     return {
         "task_id": req.task_id,
         "status": "running",

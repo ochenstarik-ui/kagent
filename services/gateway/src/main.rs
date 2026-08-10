@@ -74,6 +74,8 @@ struct AppState {
     client: Client<hyper_util::client::legacy::connect::HttpConnector, axum::body::Body>,
     control_plane_url: String,
     reasoning_engine_url: String,
+    observability_url: String,
+    service_secret: String,
     request_limit_bytes: usize,
 }
 
@@ -108,20 +110,7 @@ async fn proxy(
     let headers = req.headers().clone();
     let request_id = get_request_id(&headers);
 
-    // Route to internal service
-    let backend_url = if path.starts_with("/api/control-plane") {
-        format!(
-            "{}{}",
-            state.control_plane_url,
-            path.replacen("/api/control-plane", "", 1)
-        )
-    } else if path.starts_with("/api/reasoning") {
-        format!(
-            "{}{}",
-            state.reasoning_engine_url,
-            path.replacen("/api/reasoning", "", 1)
-        )
-    } else if path.starts_with("/health") {
+    if path.starts_with("/health") {
         return Ok((
             StatusCode::OK,
             [(
@@ -133,9 +122,15 @@ async fn proxy(
                 .into_response(),
         )
             .into_response());
-    } else {
-        return Err(StatusCode::NOT_FOUND);
-    };
+    }
+
+    let backend_url = backend_url_from_uri(
+        req.uri(),
+        &state.control_plane_url,
+        &state.reasoning_engine_url,
+        &state.observability_url,
+    )
+    .ok_or(StatusCode::NOT_FOUND)?;
 
     // Build upstream request
     let uri = Uri::from_str(&backend_url).map_err(|e| {
@@ -150,19 +145,19 @@ async fn proxy(
         .map_err(|_| StatusCode::BAD_REQUEST)?
         .to_bytes();
 
-    let upstream_req = Request::builder()
-        .method(method)
-        .uri(uri)
-        .header("x-request-id", &request_id)
-        .header(
-            "x-forwarded-for",
-            headers
-                .get("x-forwarded-for")
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or("unknown"),
-        )
-        .body(Body::from(body_bytes))
-        .map_err(|_| StatusCode::BAD_GATEWAY)?;
+    let forwarded_for = headers
+        .get("x-forwarded-for")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("unknown");
+    let upstream_req = build_upstream_request(
+        method,
+        uri,
+        &headers,
+        &request_id,
+        forwarded_for,
+        Body::from(body_bytes),
+        &state.service_secret,
+    )?;
 
     // Forward
     let resp = state.client.request(upstream_req).await.map_err(|e| {
@@ -204,6 +199,99 @@ fn get_request_id(headers: &HeaderMap) -> String {
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string())
         .unwrap_or_else(|| Uuid::new_v4().to_string())
+}
+
+fn backend_url(
+    path_and_query: &str,
+    control_plane_url: &str,
+    reasoning_engine_url: &str,
+    observability_url: &str,
+) -> Option<String> {
+    [
+        ("/api/control-plane", control_plane_url),
+        ("/api/reasoning", reasoning_engine_url),
+        ("/api/observability", observability_url),
+    ]
+    .into_iter()
+    .find_map(|(prefix, base_url)| {
+        path_and_query.strip_prefix(prefix).and_then(|suffix| {
+            (suffix.is_empty() || suffix.starts_with('/') || suffix.starts_with('?'))
+                .then(|| format!("{base_url}{suffix}"))
+        })
+    })
+}
+
+fn backend_url_from_uri(
+    uri: &Uri,
+    control_plane_url: &str,
+    reasoning_engine_url: &str,
+    observability_url: &str,
+) -> Option<String> {
+    backend_url(
+        uri.path_and_query()
+            .map(|value| value.as_str())
+            .unwrap_or_else(|| uri.path()),
+        control_plane_url,
+        reasoning_engine_url,
+        observability_url,
+    )
+}
+
+fn should_forward_header(name: &HeaderName) -> bool {
+    !matches!(
+        name.as_str(),
+        "connection"
+            | "content-length"
+            | "host"
+            | "keep-alive"
+            | "proxy-authenticate"
+            | "proxy-authorization"
+            | "te"
+            | "trailer"
+            | "transfer-encoding"
+            | "upgrade"
+            | "x-forwarded-for"
+            | "x-kagent-service-secret"
+            | "x-request-id"
+    )
+}
+
+fn build_upstream_request(
+    method: Method,
+    uri: Uri,
+    incoming_headers: &HeaderMap,
+    request_id: &str,
+    forwarded_for: &str,
+    body: Body,
+    service_secret: &str,
+) -> Result<Request<Body>, StatusCode> {
+    let mut request = Request::builder()
+        .method(method)
+        .uri(uri)
+        .body(body)
+        .map_err(|_| StatusCode::BAD_GATEWAY)?;
+
+    for (name, value) in incoming_headers {
+        if should_forward_header(name) {
+            request.headers_mut().append(name, value.clone());
+        }
+    }
+    request.headers_mut().insert(
+        "x-request-id",
+        HeaderValue::from_str(request_id).map_err(|_| StatusCode::BAD_GATEWAY)?,
+    );
+    request.headers_mut().insert(
+        "x-forwarded-for",
+        HeaderValue::from_str(forwarded_for).map_err(|_| StatusCode::BAD_GATEWAY)?,
+    );
+    let mut service_secret =
+        HeaderValue::from_str(service_secret).map_err(|_| StatusCode::BAD_GATEWAY)?;
+    service_secret.set_sensitive(true);
+    request
+        .headers_mut()
+        .insert("x-kagent-service-secret", service_secret);
+
+    Ok(request)
 }
 
 async fn rate_limit_middleware(
@@ -258,6 +346,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         env::var("CONTROL_PLANE_URL").unwrap_or_else(|_| "http://localhost:8100".to_owned());
     let reasoning_engine_url =
         env::var("REASONING_ENGINE_URL").unwrap_or_else(|_| "http://localhost:8200".to_owned());
+    let observability_url =
+        env::var("OBSERVABILITY_URL").unwrap_or_else(|_| "http://localhost:8500".to_owned());
+    let service_secret =
+        env::var("KAGENT_SERVICE_SECRET").map_err(|_| "KAGENT_SERVICE_SECRET must be set")?;
+    if service_secret.is_empty() {
+        return Err("KAGENT_SERVICE_SECRET must not be empty".into());
+    }
     let request_limit_bytes: usize = env::var("GATEWAY_REQUEST_LIMIT_BYTES")
         .unwrap_or_else(|_| "10485760".to_owned())
         .parse()
@@ -270,6 +365,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .build_http(),
         control_plane_url: control_plane_url.trim_end_matches('/').to_owned(),
         reasoning_engine_url: reasoning_engine_url.trim_end_matches('/').to_owned(),
+        observability_url: observability_url.trim_end_matches('/').to_owned(),
+        service_secret,
         request_limit_bytes,
     });
 
@@ -465,5 +562,68 @@ mod tests {
             .await
             .retain(|_, (start, _)| now.duration_since(*start) <= limiter.window);
         assert_eq!(limiter.clients.lock().await.len(), 0);
+    }
+
+    #[test]
+    fn routes_observability_requests_to_internal_service() {
+        let uri = Uri::from_static("/api/observability/v1/metrics?window=5m");
+        let url = backend_url_from_uri(
+            &uri,
+            "http://control-plane:8100",
+            "http://reasoning-engine:8200",
+            "http://observability:8500",
+        );
+
+        assert_eq!(
+            url,
+            Some("http://observability:8500/v1/metrics?window=5m".to_owned())
+        );
+    }
+
+    #[test]
+    fn rejects_routes_that_only_share_a_prefix() {
+        assert_eq!(
+            backend_url(
+                "/api/observability-admin/v1/metrics",
+                "http://control-plane:8100",
+                "http://reasoning-engine:8200",
+                "http://observability:8500",
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn signs_upstream_requests_and_preserves_required_headers() {
+        let mut incoming_headers = HeaderMap::new();
+        incoming_headers.insert("authorization", HeaderValue::from_static("Bearer token"));
+        incoming_headers.insert("content-type", HeaderValue::from_static("application/json"));
+        incoming_headers.insert(
+            "x-kagent-service-secret",
+            HeaderValue::from_static("client-controlled-value"),
+        );
+        let request = build_upstream_request(
+            Method::GET,
+            Uri::from_static("http://observability:8500/v1/metrics"),
+            &incoming_headers,
+            "request-1",
+            "127.0.0.1",
+            Body::empty(),
+            "service-secret",
+        )
+        .expect("upstream request");
+
+        assert_eq!(
+            request.headers().get("x-kagent-service-secret"),
+            Some(&HeaderValue::from_static("service-secret")),
+        );
+        assert_eq!(
+            request.headers().get("authorization"),
+            Some(&HeaderValue::from_static("Bearer token")),
+        );
+        assert_eq!(
+            request.headers().get("content-type"),
+            Some(&HeaderValue::from_static("application/json")),
+        );
     }
 }

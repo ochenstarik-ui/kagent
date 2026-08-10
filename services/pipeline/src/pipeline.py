@@ -3,12 +3,12 @@
 v0.5: Planner → Developer → Tester → Reviewer → Repair loop → DoD check.
 """
 
-import asyncio
 import hashlib
 import json
 import logging
 import os
 import re
+import secrets
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -217,6 +217,13 @@ class PipelineEngine:
         )
 
         async with httpx.AsyncClient(timeout=120.0) as client:
+            service_secret = os.getenv(SERVICE_SECRET_ENV, "")
+            client_headers = getattr(client, "headers", None)
+            if client_headers is None:
+                client_headers = {}
+                client.headers = client_headers
+            client_headers[SERVICE_SECRET_HEADER] = service_secret
+
             # Create workspace context
             await client.post(f"{self.runtime_url}/v1/contexts", json={
                 "task_id": task_id,
@@ -334,11 +341,25 @@ class PipelineEngine:
 # FastAPI Server
 # ═══════════════════════════════════════════════════════════════════════
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 app = FastAPI(title="KAgent Pipeline", version="0.5.0")
 engine = PipelineEngine()
+SERVICE_SECRET_ENV = "KAGENT_SERVICE_SECRET"
+SERVICE_SECRET_HEADER = "x-kagent-service-secret"
+UNAUTHENTICATED_PATHS = frozenset({"/health/live", "/health/ready"})
+
+
+@app.middleware("http")
+async def require_service_secret(request: Request, call_next):
+    if request.url.path not in UNAUTHENTICATED_PATHS:
+        expected = os.getenv(SERVICE_SECRET_ENV, "").encode()
+        provided = request.headers.get(SERVICE_SECRET_HEADER, "").encode()
+        if not expected or not provided or not secrets.compare_digest(provided, expected):
+            return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+    return await call_next(request)
 
 
 class ExecutePipelineRequest(BaseModel):
@@ -374,7 +395,7 @@ async def execute_pipeline(req: ExecutePipelineRequest, background: BackgroundTa
     async def _run():
         await engine.execute(req.task_id, req.project_id, req.task_type)
     
-    background.add_task(lambda: asyncio.create_task(_run()))
+    background.add_task(_run)
     
     return PipelineResponse(
         task_id=req.task_id,

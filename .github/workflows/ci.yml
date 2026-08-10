@@ -78,6 +78,7 @@ jobs:
           tests/unit/test_pipeline_events.py
           tests/unit/test_ci_evidence.py
           tests/unit/test_runtime.py
+          tests/unit/test_service_auth.py
       - id: repo_validation
         run: python scripts/validate_repository.py
       - id: drift_check
