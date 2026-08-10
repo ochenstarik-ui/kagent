@@ -1,4 +1,4 @@
-import { randomBytes, createHmac, timingSafeEqual } from "node:crypto";
+import { randomBytes, createHmac, timingSafeEqual, createHash } from "node:crypto";
 
 const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
@@ -47,6 +47,18 @@ export function base32Decode(input: string): Buffer {
 
 export function generateSecret(): string {
   return base32Encode(randomBytes(20)).replace(/=/g, "");
+}
+
+export function generateRecoveryCodes(): { codes: string[]; hashes: string[] } {
+  const codes: string[] = [];
+  const hashes: string[] = [];
+  for (let i = 0; i < 10; i++) {
+    // 128 bits = 16 bytes. We use hex for readability.
+    const code = randomBytes(16).toString("hex");
+    codes.push(code);
+    hashes.push(createHash("sha256").update(code).digest("hex"));
+  }
+  return { codes, hashes };
 }
 
 export function generateUri(email: string, secret: string): string {

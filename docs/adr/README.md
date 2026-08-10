@@ -44,6 +44,7 @@ Statuses:
 | 0023 | TOTP authentication in Control Plane | accepted |
 | 0024 | Importable Python Agent Runtime package | accepted |
 | 0025 | Internal service perimeter and shared secret | proposed |
+| 0026 | TOTP recovery codes | proposed |
 
 ADR-0004 through ADR-0016 are specified in sections 35–41 of `docs/KAGENT_FULL_PRODUCT_SPEC.md`.
 ADR-0017 through ADR-0020 are specified in sections 42–51. They move to `accepted` when the project owner approves them.

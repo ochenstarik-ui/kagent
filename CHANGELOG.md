@@ -10,6 +10,7 @@
 - Refactored TOTP authentication to separate unit-testable policy from PostgreSQL persistence adapter, fixing cross-instance replay issues and atomic one-time challenges.
 
 ### Added
+- Added recovery codes capability for TOTP, including generate and login endpoints, generating 10 hashed 128-bit codes with atomic revocation and secure double-use rejection.
 
 - Интеграция Pipeline с Reasoning Engine (P2): использование моделей для планирования и выполнения фаз `DEVELOP` и `REPAIR`, с подсчетом стоимости/токенов и строгими ограничениями по рабочим путям.
 - Реализовано фактическое исполнение моделей в Reasoning Engine с отказоустойчивостью (fallback), подсчётом токенов/стоимости, кэшированием решений и поддержкой режимов live/record/replay через кассеты.
