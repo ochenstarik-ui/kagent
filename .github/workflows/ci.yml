@@ -67,9 +67,11 @@ jobs:
           python-version: "3.11"
       - run: pip install -r services/pipeline/requirements.txt ruff pytest pytest-asyncio
       - run: ruff check services/ scripts/ tests/unit/ --select E --ignore E501,E402
-      - name: Run measurability unit tests
+      - name: Run unit tests
         run: >-
           python -m pytest
+          services/reasoning-engine/tests/unit
+          services/pipeline/tests/unit
           tests/unit/test_measurability.py
           tests/unit/test_eval_suite.py
           tests/unit/test_drift_check.py
