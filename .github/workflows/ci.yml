@@ -67,9 +67,11 @@ jobs:
           python-version: "3.11"
       - run: pip install -r services/pipeline/requirements.txt ruff pytest pytest-asyncio
       - run: ruff check services/ scripts/ tests/unit/ --select E --ignore E501,E402
-      - name: Run measurability unit tests
+      - name: Run unit tests
         run: >-
           python -m pytest
+          services/reasoning-engine/tests/unit
+          services/pipeline/tests/unit
           tests/unit/test_measurability.py
           tests/unit/test_eval_suite.py
           tests/unit/test_drift_check.py
@@ -206,9 +208,13 @@ jobs:
         env:
           PGPASSWORD: kagent
         run: |
-          psql -h localhost -U kagent -d kagent -f migrations/001_initial_schema.sql
-          psql -h localhost -U kagent -d kagent -f migrations/002_auth.sql
-          psql -h localhost -U kagent -d kagent -f migrations/003_audit_immutability.sql
+          set -e
+          # Apply every migration in order. A named list silently skips new files:
+          # 005_recovery_codes.sql was added by a task and never reached this step.
+          for migration in $(ls migrations/*.sql | sort); do
+            echo "applying $migration"
+            psql -h localhost -U kagent -d kagent -v ON_ERROR_STOP=1 -f "$migration"
+          done
       - name: Install dependencies
         run: |
           pnpm install --frozen-lockfile=false

@@ -20,6 +20,9 @@ from typing import Any, Optional
 
 import httpx
 from services.nats.src.events import DomainEvent, NatsClient
+from .workspace import WorkspaceManager
+from .git_manager import GitManager
+from .ledger import EffectLedger
 
 logger = logging.getLogger(__name__)
 EventPublisher = Callable[[str, DomainEvent], Awaitable[None]]
@@ -36,6 +39,7 @@ class StepStatus(str, Enum):
     PASSED = "passed"
     FAILED = "failed"
     SKIPPED = "skipped"
+    HUMAN_REQUIRED = "human_required"
 
 
 class PipelinePhase(str, Enum):
@@ -45,6 +49,25 @@ class PipelinePhase(str, Enum):
     REVIEW = "review"
     REPAIR = "repair"
     DOD = "dod"  # Definition of Done
+
+
+@dataclass
+class TaskLimits:
+    max_time_ms: int = 600000  # 10 minutes default
+    max_cost: float = 1.0  # 1$ default
+    max_files: int = 10
+    max_steps: int = 20
+    max_repair_cycles: int = 3
+
+
+@dataclass
+class TaskContract:
+    allowed_paths: list[str] = field(default_factory=list)
+    forbidden_paths: list[str] = field(default_factory=list)
+    allowed_actions: list[str] = field(default_factory=list)
+    approval_required: bool = True
+    limits: TaskLimits = field(default_factory=TaskLimits)
+
 
 
 @dataclass
@@ -59,6 +82,10 @@ class PipelineStep:
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     repair_attempts: int = 0
+    model_id: Optional[str] = None
+    tokens_input: int = 0
+    tokens_output: int = 0
+    cost_usd: float = 0.0
 
 
 @dataclass
@@ -72,6 +99,10 @@ class PipelineResult:
     max_repair_cycles: int = 3
     started_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     completed_at: Optional[str] = None
+    total_model_calls: int = 0
+    total_tokens_input: int = 0
+    total_tokens_output: int = 0
+    total_cost_usd: float = 0.0
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -108,8 +139,76 @@ class Planner:
         ],
     }
 
-    def plan(self, task_type: str = "feature") -> list[PipelineStep]:
-        return self.TEMPLATES.get(task_type, self.TEMPLATES["feature"])
+    async def plan(
+        self,
+        task_type: str,
+        task_description: str,
+        client: httpx.AsyncClient,
+        reasoning_url: str,
+        use_model: bool = True
+    ) -> list[PipelineStep]:
+        if not use_model:
+            return self.TEMPLATES.get(task_type, self.TEMPLATES["feature"])
+        
+        # Call reasoning engine to get a plan
+        try:
+            # 1. Decide
+            decide_res = await client.post(
+                f"{reasoning_url}/v1/decide",
+                json={"capability": "planning", "task_type": task_type}
+            )
+            decide_res.raise_for_status()
+            req_id = decide_res.json()["request_id"]
+            
+            # 2. Execute
+            exec_res = await client.post(
+                f"{reasoning_url}/v1/execute",
+                json={
+                    "request_id": req_id,
+                    "messages": [
+                        {"role": "system", "content": "You are a planner. Return a JSON array of steps. Each step must have 'phase' (plan, develop, test, review, dod), 'description', 'tool', and 'params' (dict)."},
+                        {"role": "user", "content": f"Plan for task: {task_description}"}
+                    ]
+                }
+            )
+            exec_res.raise_for_status()
+            data = exec_res.json()
+            
+            if not data.get("success"):
+                raise Exception(f"Reasoning engine failed: {data.get('error')}")
+            
+            content = data.get("content", "")
+            # Try to parse JSON from content
+            # find array
+            start = content.find("[")
+            end = content.rfind("]")
+            if start == -1 or end == -1:
+                raise ValueError("No JSON array found in output")
+            
+            parsed = json.loads(content[start:end+1])
+            steps = []
+            for s in parsed:
+                steps.append(PipelineStep(
+                    phase=PipelinePhase(s["phase"].lower()),
+                    description=s.get("description", ""),
+                    tool=s.get("tool", ""),
+                    params=s.get("params", {}),
+                    model_id=data.get("model_id"),
+                    tokens_input=data.get("tokens_input", 0),
+                    tokens_output=data.get("tokens_output", 0),
+                    cost_usd=data.get("cost_usd", 0.0),
+                ))
+            return steps
+            
+        except Exception as e:
+            # Create a failed step indicating plan failure instead of silent fallback
+            return [PipelineStep(
+                phase=PipelinePhase.PLAN,
+                description="Generate plan from model",
+                status=StepStatus.FAILED,
+                error=f"Failed to generate plan: {str(e)}",
+                output={"raw_output": content if 'content' in locals() else str(e)}
+            )]
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -196,18 +295,47 @@ class PipelineEngine:
         except Exception as error:  # noqa: BLE001 - event delivery is an isolated best-effort boundary
             logger.warning("Failed to publish %s event: %s", event_type, error)
 
-    async def execute(self, task_id: str, project_id: str, task_type: str = "feature") -> PipelineResult:
-        steps = self.planner.plan(task_type)
+    async def execute(
+        self,
+        task_id: str,
+        project_id: str,
+        task_type: str = "feature",
+        task_description: str = "",
+        contract: TaskContract = None,
+        repository_url: str = "",
+        git_token: str = "",
+        use_model: bool = True,
+        allowed_paths: list[str] = None,
+        forbidden_paths: list[str] = None,
+    ) -> PipelineResult:
+        if contract is None:
+            contract = TaskContract(
+                allowed_paths=allowed_paths or ["."],
+                forbidden_paths=forbidden_paths or []
+            )
+            
         correlation_id = str(uuid.uuid4())
-        result = PipelineResult(
-            task_id=task_id,
-            project_id=project_id,
-            steps=steps,
-            status=StepStatus.RUNNING,
-        )
-        self._results[task_id] = result
+        ledger = EffectLedger()
+        
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            steps = await self.planner.plan(
+                task_type=task_type,
+                task_description=task_description,
+                client=client,
+                reasoning_url=self.reasoning_url,
+                use_model=use_model
+            )
+            
+            result = PipelineResult(
+                task_id=task_id,
+                project_id=project_id,
+                steps=steps,
+                status=StepStatus.RUNNING,
+            )
+            result.max_repair_cycles = contract.limits.max_repair_cycles
+            self._results[task_id] = result
 
-        started = time.time()
+            started = time.time()
         await self._emit_event(
             "task.started",
             project_id=project_id,
@@ -216,25 +344,49 @@ class PipelineEngine:
             payload={"taskType": task_type},
         )
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            service_secret = os.getenv(SERVICE_SECRET_ENV, "")
-            client_headers = getattr(client, "headers", None)
-            if client_headers is None:
-                client_headers = {}
-                client.headers = client_headers
-            client_headers[SERVICE_SECRET_HEADER] = service_secret
+        workspace_manager: WorkspaceManager | None = None
+        git_manager: GitManager | None = None
 
-            # Create workspace context
-            await client.post(f"{self.runtime_url}/v1/contexts", json={
-                "task_id": task_id,
-                "project_id": project_id,
-            })
+        if repository_url:
+            workspace_manager = WorkspaceManager(repository_url, task_id)
+            try:
+                ws_path = workspace_manager.setup()
+                # Setup contract for git_manager
+                from .git_manager import GitTaskContract
+                git_contract = GitTaskContract(
+                    id=task_id,
+                    allowed_paths=contract.allowed_paths,
+                    forbidden_paths=contract.forbidden_paths,
+                    base_sha="HEAD", # or something
+                    max_changed_files=contract.limits.max_files,
+                    max_minutes=contract.limits.max_time_ms / 60000,
+                    max_model_cost=contract.limits.max_cost,
+                    max_agent_turns=contract.limits.max_steps,
+                    max_repair_cycles=contract.limits.max_repair_cycles,
+                )
+                git_manager = GitManager(ws_path, run_id=correlation_id, ledger=ledger, contract=git_contract)
+            except Exception as e:
+                logger.error(f"Failed to setup workspace: {e}")
+                result.status = StepStatus.FAILED
+                result.completed_at = datetime.now(timezone.utc).isoformat()
+                return result
+
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                service_secret = os.getenv(SERVICE_SECRET_ENV, "")
+                client_headers = getattr(client, "headers", None)
+                if client_headers is None:
+                    client_headers = {}
+                    client.headers = client_headers
+                client_headers[SERVICE_SECRET_HEADER] = service_secret
+
+                # Create workspace context
+                await client.post(f"{self.runtime_url}/v1/contexts", json={
+                    "task_id": task_id,
+                    "project_id": project_id,
+                })
 
             for step in steps:
-                if result.repair_cycles >= result.max_repair_cycles:
-                    step.status = StepStatus.FAILED
-                    step.error = "Max repair cycles exceeded"
-                    break
 
                 step.status = StepStatus.RUNNING
                 step.started_at = datetime.now(timezone.utc).isoformat()
@@ -251,6 +403,68 @@ class PipelineEngine:
                 )
 
                 try:
+                    # Validate paths if tool is file_write or shell touching files
+                    if step.tool in ("file_write", "file_read"):
+                        path = step.params.get("path", "")
+                        # Simple boundary check
+                        if ".." in path or path.startswith("/"):
+                            raise ValueError(f"Path {path} violates allowed_paths boundaries")
+                        # Check against contract
+                        allowed = any(path.startswith(a) or path == a or a == "." for a in contract.allowed_paths)
+                        if not allowed:
+                            raise ValueError(f"Path {path} violates allowed_paths boundaries")
+                            
+                    if step.phase in (PipelinePhase.DEVELOP, PipelinePhase.REPAIR) and use_model:
+                        # 1. Gather context
+                        context_msg = f"Task: {task_description}\n"
+                        if step.phase == PipelinePhase.REPAIR:
+                            context_msg += f"Repair context: {'; '.join(violations if 'violations' in locals() else [])}\n"
+                        
+                        # 2. Decide & Execute via Reasoning Engine
+                        decide_res = await client.post(
+                            f"{self.reasoning_url}/v1/decide",
+                            json={"capability": "code_generation", "task_type": task_type}
+                        )
+                        decide_res.raise_for_status()
+                        req_id = decide_res.json()["request_id"]
+                        
+                        exec_res = await client.post(
+                            f"{self.reasoning_url}/v1/execute",
+                            json={
+                                "request_id": req_id,
+                                "messages": [
+                                    {"role": "system", "content": "You are a developer. Output JSON with 'tool' and 'params' to execute."},
+                                    {"role": "user", "content": context_msg}
+                                ]
+                            }
+                        )
+                        exec_res.raise_for_status()
+                        model_data = exec_res.json()
+                        
+                        if not model_data.get("success"):
+                            raise Exception(f"Model failed: {model_data.get('error')}")
+                        
+                        step.model_id = model_data.get("model_id")
+                        step.tokens_input = model_data.get("tokens_input", 0)
+                        step.tokens_output = model_data.get("tokens_output", 0)
+                        step.cost_usd = model_data.get("cost_usd", 0.0)
+                        
+                        result.total_model_calls += 1
+                        result.total_tokens_input += step.tokens_input
+                        result.total_tokens_output += step.tokens_output
+                        result.total_cost_usd += step.cost_usd
+                        
+                        # Parse tool/params from model content
+                        content = model_data.get("content", "{}")
+                        try:
+                            start = content.find("{")
+                            end = content.rfind("}")
+                            parsed = json.loads(content[start:end+1])
+                            step.tool = parsed.get("tool", step.tool)
+                            step.params = parsed.get("params", step.params)
+                        except Exception as e:
+                            raise ValueError(f"Malformed JSON from model: {content}") from e
+
                     # Execute tool via runtime
                     if step.tool:
                         resp = await client.post(f"{self.runtime_url}/v1/execute", json={
@@ -265,7 +479,7 @@ class PipelineEngine:
 
                     if review_passed:
                         step.status = StepStatus.PASSED
-                    elif step.phase in (PipelinePhase.REPAIR, PipelinePhase.DEVELOP):
+                    elif step.phase in (PipelinePhase.TEST, PipelinePhase.REPAIR, PipelinePhase.DEVELOP):
                         # Try repair
                         result.repair_cycles += 1
                         step.repair_attempts += 1
@@ -278,11 +492,24 @@ class PipelineEngine:
                                 "file_write",
                                 {},
                             )
-                            result.steps.insert(result.steps.index(step) + 1, repair_step)
+                            insert_index = result.steps.index(step) + 1
+                            result.steps.insert(insert_index, repair_step)
+                            
+                            if step.phase == PipelinePhase.TEST:
+                                new_test_step = PipelineStep(
+                                    PipelinePhase.TEST,
+                                    "Verify repair fix",
+                                    step.tool,
+                                    step.params,
+                                )
+                                result.steps.insert(insert_index + 1, new_test_step)
+                                
                             step.status = StepStatus.FAILED
                         else:
                             step.status = StepStatus.FAILED
                             step.error = f"Repair failed: {'; '.join(violations)}"
+                            result.status = StepStatus.HUMAN_REQUIRED
+                            break
                     else:
                         step.status = StepStatus.FAILED
                         step.error = "; ".join(violations) if violations else "Review failed"
@@ -314,12 +541,38 @@ class PipelineEngine:
                             payload={"path": artifact_path},
                         )
 
+        finally:
+            if workspace_manager:
+                workspace_manager.teardown()
+
         result.completed_at = datetime.now(timezone.utc).isoformat()
         result.total_duration_ms = int((time.time() - started) * 1000)
 
         # Overall status
-        failures = sum(1 for s in steps if s.status == StepStatus.FAILED)
-        result.status = StepStatus.PASSED if failures == 0 else StepStatus.FAILED
+        failures = sum(1 for s in result.steps if s.status == StepStatus.FAILED)
+        if result.status != StepStatus.HUMAN_REQUIRED:
+            result.status = StepStatus.PASSED if failures == 0 else StepStatus.FAILED
+
+        if result.status == StepStatus.PASSED and git_manager and git_token:
+            try:
+                # Commit and push
+                git_manager.create_commit(f"Resolve task {task_id}: {task_description}")
+                git_manager.push(workspace_manager.branch_name)
+                
+                # Create PR
+                await git_manager.create_pull_request(
+                    token=git_token,
+                    repo_owner=workspace_manager.repository_url.split("/")[-2],
+                    repo_name=workspace_manager.repository_url.split("/")[-1].replace(".git", ""),
+                    title=f"Task {task_id}: {task_type.capitalize()}",
+                    body=f"Automated resolution for task {task_id}.\n\nModel costs: ${result.total_cost_usd:.2f}",
+                    head=workspace_manager.branch_name,
+                    base=workspace_manager.base_branch
+                )
+            except Exception as e:
+                logger.error(f"Git operations failed: {e}")
+                result.status = StepStatus.FAILED
+
         if result.status == StepStatus.FAILED:
             await self._emit_event(
                 "task.failed",
@@ -327,7 +580,7 @@ class PipelineEngine:
                 task_id=task_id,
                 correlation_id=correlation_id,
                 payload={
-                    "errors": [step.error for step in steps if step.error is not None],
+                    "errors": [step.error for step in result.steps if step.error is not None],
                 },
             )
 

@@ -97,6 +97,7 @@ class ModelExecution:
     latency_ms: int = 0
     success: bool = False
     error_message: Optional[str] = None
+    content: Optional[str] = None
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -217,7 +218,6 @@ class ReasoningEngine:
         request_id = hashlib.sha256(
             json.dumps({
                 "capability": request.capability.value,
-                "ts": time.time()
             }).encode()
         ).hexdigest()[:12]
         
@@ -267,51 +267,114 @@ class ReasoningEngine:
         messages: list[dict[str, str]],
     ) -> ModelExecution:
         """Execute the actual model call."""
-        model = decision.selected_model
-        endpoint = self.registry.get_endpoint(model.provider)
-        api_key = self.registry.get_api_key(model.provider)
+        import os
+        import json
+        import hashlib
+        from pathlib import Path
         
-        if not endpoint:
-            raise ValueError(f"No endpoint configured for provider {model.provider}")
+        mode = os.environ.get("EXECUTION_MODE", "live").lower()
+        cassettes_dir = Path("cassettes")
+        if mode in ("record", "replay"):
+            cassettes_dir.mkdir(exist_ok=True)
+            
+        req_hash = hashlib.sha256(json.dumps({"messages": messages}).encode()).hexdigest()[:16]
+        cassette_path = cassettes_dir / f"{decision.request_id}_{req_hash}.json"
         
-        execution = ModelExecution(
-            model_id=model.id,
-            provider=model.provider,
-        )
+        if mode == "replay":
+            if not cassette_path.exists():
+                raise FileNotFoundError(f"Replay mode: cassette not found at {cassette_path}")
+            with cassette_path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+            
+            model = decision.selected_model
+            execution = ModelExecution(
+                model_id=model.id,
+                provider=model.provider,
+                tokens_input=data.get("tokens_input", 0),
+                tokens_output=data.get("tokens_output", 0),
+                cost_usd=data.get("cost_usd", 0.0),
+                latency_ms=data.get("latency_ms", 0),
+                success=True,
+                content=data.get("content"),
+            )
+            self.telemetry.append(execution)
+            return execution
         
-        start = time.time()
-        try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(
-                    f"{endpoint}/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": model.model_name,
-                        "messages": messages,
-                        "max_tokens": min(model.max_tokens, 4096),
-                    },
-                )
-                response.raise_for_status()
-                data = response.json()
-                
-                usage = data.get("usage", {})
-                execution.tokens_input = usage.get("prompt_tokens", 0)
-                execution.tokens_output = usage.get("completion_tokens", 0)
-                execution.cost_usd = (
-                    (execution.tokens_input / 1000) * model.price_per_1k_input
-                    + (execution.tokens_output / 1000) * model.price_per_1k_output
-                )
-                execution.success = True
-        except Exception as e:
-            execution.error_message = str(e)
+        models_to_try = [decision.selected_model] + decision.fallback_models
+        last_execution = None
         
-        execution.latency_ms = int((time.time() - start) * 1000)
-        self.telemetry.append(execution)
+        for model in models_to_try:
+            endpoint = self.registry.get_endpoint(model.provider)
+            api_key = self.registry.get_api_key(model.provider)
+            
+            if not endpoint:
+                continue
+            
+            execution = ModelExecution(
+                model_id=model.id,
+                provider=model.provider,
+            )
+            
+            start = time.time()
+            try:
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    response = await client.post(
+                        f"{endpoint}/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {api_key}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "model": model.model_name,
+                            "messages": messages,
+                            "max_tokens": min(model.max_tokens, 4096),
+                        },
+                    )
+                    response.raise_for_status()
+                    data = response.json()
+                    
+                    usage = data.get("usage", {})
+                    execution.tokens_input = usage.get("prompt_tokens", 0)
+                    execution.tokens_output = usage.get("completion_tokens", 0)
+                    execution.cost_usd = (
+                        (execution.tokens_input / 1000) * model.price_per_1k_input
+                        + (execution.tokens_output / 1000) * model.price_per_1k_output
+                    )
+                    execution.success = True
+                    choices = data.get("choices", [])
+                    if choices and "message" in choices[0]:
+                        execution.content = choices[0]["message"].get("content", "")
+            except Exception as e:
+                err_msg = str(e)
+                if api_key and api_key in err_msg:
+                    err_msg = err_msg.replace(api_key, "***")
+                execution.error_message = err_msg
+            
+            execution.latency_ms = int((time.time() - start) * 1000)
+            self.telemetry.append(execution)
+            last_execution = execution
+            
+            if execution.success:
+                if mode == "record":
+                    with cassette_path.open("w", encoding="utf-8") as f:
+                        json.dump({
+                            "tokens_input": execution.tokens_input,
+                            "tokens_output": execution.tokens_output,
+                            "cost_usd": execution.cost_usd,
+                            "latency_ms": execution.latency_ms,
+                            "content": execution.content,
+                        }, f, indent=2)
+                return execution
         
-        return execution
+        if last_execution is None:
+            return ModelExecution(
+                model_id=decision.selected_model.id,
+                provider=decision.selected_model.provider,
+                success=False,
+                error_message="No endpoints configured for any models."
+            )
+            
+        return last_execution
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -345,7 +408,7 @@ def create_default_engine() -> ReasoningEngine:
         model_name="kimi-k2.7-code",
         capabilities=[
             Capability.CODE_GENERATION, Capability.CODE_REVIEW,
-            Capability.REASONING, Capability.ANALYSIS, Capability.CHAT
+            Capability.REASONING, Capability.ANALYSIS, Capability.CHAT, Capability.PLANNING
         ],
         price_per_1k_input=0.0015,
         price_per_1k_output=0.006,
