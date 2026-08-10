@@ -1,4 +1,4 @@
-# ADR-0021: Shared Python event delivery
+# ADR-0022: Shared Python event delivery
 
 - Status: accepted
 - Date: 2026-08-10
@@ -16,7 +16,8 @@ ADR-0002. NATS availability must not become a precondition for completing pipeli
 
 The reusable Python implementation lives in `packages/py_events`, the shared Python SDK
 boundary described by specification section 7. `services/nats/src/events.py` is retained as
-a compatibility import while callers migrate.
+a compatibility import for existing callers; pipeline reaches the single shared
+implementation through that import.
 
 The client derives stream names and subject sets from one subject-prefix rule and ensures
 the stream exists before both publication and durable subscription. Connection and
@@ -36,4 +37,5 @@ unavailable.
 
 ## Dependency
 
-`nats-py` 2.8.0 is used under the Apache-2.0 license.
+Pipeline and orchestrator use `nats-py` 2.15.0 under the Apache-2.0 license. Aligning the
+declared dependency does not integrate event delivery into the orchestrator.

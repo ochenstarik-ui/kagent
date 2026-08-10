@@ -2,12 +2,15 @@
 
 import asyncio
 import json
+from pathlib import Path
 
 import pytest
 from nats.js.errors import BadRequestError, NotFoundError
-
 from packages.py_events import events as event_module
 from packages.py_events.events import DomainEvent, NatsClient, stream_definition
+
+ROOT = Path(__file__).resolve().parents[2]
+
 
 
 def test_domain_event_serializes_versioned_envelope() -> None:
@@ -191,3 +194,27 @@ async def test_request_returns_decoded_response() -> None:
     )
 
     assert response == {"status": "ok"}
+
+
+def test_event_dependency_is_aligned_and_current() -> None:
+    pipeline_requirements = (ROOT / "services/pipeline/requirements.txt").read_text()
+    orchestrator_requirements = (ROOT / "services/orchestrator/requirements.txt").read_text()
+
+    assert "nats-py==2.15.0" in pipeline_requirements
+    assert "nats-py==2.15.0" in orchestrator_requirements
+
+
+def test_capability_registry_uses_broker_evidence_and_shared_package() -> None:
+    registry = json.loads((ROOT / "docs/capabilities.json").read_text())
+    capability = next(
+        item for item in registry["capabilities"] if item["id"] == "nats.events"
+    )
+
+    assert capability["module"] == "packages/py_events/events.py"
+    assert capability["evidence"] == ["python_ci", "nats_events_ci"]
+    assert "packages/py_events/events.py" in capability["artifacts"]
+    assert registry["evidence_checks"]["nats_events_ci"] == {
+        "type": "ci",
+        "job": "nats-events",
+        "allow_failure": False,
+    }

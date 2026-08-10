@@ -3,17 +3,23 @@
 import asyncio
 import contextlib
 import json
+import logging
 import re
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import nats
+from nats.errors import Error as NatsError
+from nats.errors import TimeoutError as NatsTimeoutError
 from nats.js import JetStreamContext
 from nats.js.api import ConsumerConfig, DeliverPolicy
 from nats.js.errors import BadRequestError, NotFoundError
+from nats.js.errors import Error as JetStreamError
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -43,7 +49,7 @@ class DomainEvent:
     aggregate_type: str
     data: dict[str, Any] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
-    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     event_id: str = ""
     schema_version: int = 1
     project_id: str = ""
@@ -171,11 +177,12 @@ class NatsClient:
                         try:
                             await handler(DomainEvent.from_json(message.data))
                             await message.ack()
-                        except Exception:
+                        except Exception:  # noqa: BLE001 - callback boundary must nak every handler failure
                             await message.nak()
-                except asyncio.TimeoutError:
+                except (TimeoutError, NatsTimeoutError):
                     continue
-                except Exception:
+                except (NatsError, JetStreamError, OSError) as error:
+                    logger.warning("NATS subscription fetch failed: %s", error)
                     await asyncio.sleep(1)
 
         self._subscriptions[subject] = asyncio.create_task(listen())
@@ -195,5 +202,5 @@ class NatsClient:
                 timeout=timeout,
             )
             return json.loads(response.data)
-        except Exception:
+        except (NatsError, JetStreamError, OSError, json.JSONDecodeError):
             return None

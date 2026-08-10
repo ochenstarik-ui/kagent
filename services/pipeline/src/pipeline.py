@@ -19,9 +19,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import httpx
-
 from services.nats.src.events import DomainEvent, NatsClient
-
 
 logger = logging.getLogger(__name__)
 EventPublisher = Callable[[str, DomainEvent], Awaitable[None]]
@@ -195,7 +193,7 @@ class PipelineEngine:
         )
         try:
             await self._event_publisher(event_type, event)
-        except Exception as error:
+        except Exception as error:  # noqa: BLE001 - event delivery is an isolated best-effort boundary
             logger.warning("Failed to publish %s event: %s", event_type, error)
 
     async def execute(self, task_id: str, project_id: str, task_type: str = "feature") -> PipelineResult:
