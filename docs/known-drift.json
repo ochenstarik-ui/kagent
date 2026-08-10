@@ -12,12 +12,6 @@
       "reason": "The standalone TOTP module is tested but not imported by a production service entry point.",
       "expires": "2026-10-01",
       "follow_up_task": "KAGENT-INTEGRATE-AUTH-TOTP"
-    },
-    {
-      "path": "services/nats/src/events.py",
-      "reason": "The NATS event module is tested but not imported by a production service entry point.",
-      "expires": "2026-10-01",
-      "follow_up_task": "KAGENT-INTEGRATE-NATS-EVENTS"
     }
   ]
 }
