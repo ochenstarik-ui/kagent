@@ -21,6 +21,19 @@
 - The forbidden-path drift rule now distinguishes standalone measurability work from a
   product change that attempts to modify eval or measurability artifacts in the same task.
 
+## 2026-08-10 — Internal service perimeter
+
+- Gateway is the only KAgent HTTP service published by the default Compose file; Control
+  Plane, Reasoning Engine, Agent Runtime, Pipeline, and Observability remain reachable only
+  on the internal Compose network.
+- Gateway routes `/api/observability/*`, preserves upstream route/query semantics, and signs
+  requests with the installation's `KAGENT_SERVICE_SECRET`; Pipeline uses the same header for
+  Runtime calls.
+- Agent Runtime and Pipeline reject non-health requests with `401` unless the shared secret
+  matches in constant time. Health probes remain unauthenticated.
+- This is a bootstrap control, not a service identity system; mTLS and scoped identities
+  remain deferred.
+
 ## 2026-08-10 — TOTP second factor in Control Plane
 
 - TOTP is implemented beside the existing TypeScript session and password flow; the dead
