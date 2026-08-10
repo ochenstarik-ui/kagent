@@ -94,3 +94,119 @@ export function verifyCodeWithStep(secret: string, code: string, window = 1, cur
   }
   return { valid: false, step: 0 };
 }
+
+import { Pool } from "pg";
+import { nanoid } from "nanoid";
+
+export interface TotpStorage {
+  createChallenge(challengeId: string, accountId: string, expiresAt: number): Promise<void>;
+  getChallenge(challengeId: string): Promise<{ accountId: string; expiresAt: number; attempts: number } | undefined>;
+  incrementChallengeAttempts(challengeId: string): Promise<void>;
+  deleteChallenge(challengeId: string): Promise<void>;
+  getLastStep(accountId: string): Promise<number>;
+  setLastStep(accountId: string, step: number): Promise<void>;
+  deleteLastStep(accountId: string): Promise<void>;
+}
+
+export class InMemoryTotpStorage implements TotpStorage {
+  private _challenges = new Map<string, { accountId: string; expiresAt: number; attempts: number }>();
+  private _totpLastSteps = new Map<string, number>();
+
+  async createChallenge(challengeId: string, accountId: string, expiresAt: number) {
+    this._challenges.set(challengeId, { accountId, expiresAt, attempts: 0 });
+  }
+  async getChallenge(challengeId: string) {
+    return this._challenges.get(challengeId);
+  }
+  async incrementChallengeAttempts(challengeId: string) {
+    const ch = this._challenges.get(challengeId);
+    if (ch) ch.attempts++;
+  }
+  async deleteChallenge(challengeId: string) {
+    this._challenges.delete(challengeId);
+  }
+  async getLastStep(accountId: string) {
+    return this._totpLastSteps.get(accountId) ?? -1;
+  }
+  async setLastStep(accountId: string, step: number) {
+    this._totpLastSteps.set(accountId, step);
+  }
+  async deleteLastStep(accountId: string) {
+    this._totpLastSteps.delete(accountId);
+  }
+}
+
+export class PostgresTotpStorage implements TotpStorage {
+  constructor(private pool: Pool) {}
+  async createChallenge(challengeId: string, accountId: string, expiresAt: number) {
+    await this.pool.query(
+      "INSERT INTO totp_challenges (id, account_id, expires_at) VALUES ($1, $2, to_timestamp($3))",
+      [challengeId, accountId, expiresAt / 1000.0]
+    );
+  }
+  async getChallenge(challengeId: string) {
+    const res = await this.pool.query("SELECT * FROM totp_challenges WHERE id = $1", [challengeId]);
+    if (res.rows.length === 0) return undefined;
+    const row = res.rows[0];
+    return { accountId: row.account_id, expiresAt: new Date(row.expires_at).getTime(), attempts: row.attempts };
+  }
+  async incrementChallengeAttempts(challengeId: string) {
+    await this.pool.query("UPDATE totp_challenges SET attempts = attempts + 1 WHERE id = $1", [challengeId]);
+  }
+  async deleteChallenge(challengeId: string) {
+    await this.pool.query("DELETE FROM totp_challenges WHERE id = $1", [challengeId]);
+  }
+  async getLastStep(accountId: string) {
+    const res = await this.pool.query("SELECT totp_last_step FROM accounts WHERE id = $1", [accountId]);
+    if (res.rows.length === 0 || !res.rows[0].totp_last_step) return -1;
+    return parseInt(res.rows[0].totp_last_step, 10);
+  }
+  async setLastStep(accountId: string, step: number) {
+    await this.pool.query("UPDATE accounts SET totp_last_step = $1 WHERE id = $2", [step, accountId]);
+  }
+  async deleteLastStep(accountId: string) {
+    await this.pool.query("UPDATE accounts SET totp_last_step = NULL WHERE id = $1", [accountId]);
+  }
+}
+
+export class TotpPolicy {
+  constructor(private storage: TotpStorage) {}
+
+  async createChallenge(accountId: string): Promise<string> {
+    const challengeId = nanoid(20);
+    const expiresAt = Date.now() + 5 * 60 * 1000;
+    await this.storage.createChallenge(challengeId, accountId, expiresAt);
+    return challengeId;
+  }
+
+  async getAndVerifyChallenge(challengeId: string): Promise<{ accountId: string } | { error: string }> {
+    const challenge = await this.storage.getChallenge(challengeId);
+    if (!challenge || challenge.expiresAt < Date.now() || challenge.attempts >= 5) {
+      return { error: "Invalid credentials" };
+    }
+    return { accountId: challenge.accountId };
+  }
+
+  async failChallenge(challengeId: string): Promise<void> {
+    await this.storage.incrementChallengeAttempts(challengeId);
+  }
+
+  async finishChallenge(challengeId: string): Promise<void> {
+    await this.storage.deleteChallenge(challengeId);
+  }
+
+  async consumeTotpCode(accountId: string, secret: string, code: string): Promise<boolean> {
+    const { valid, step } = verifyCodeWithStep(secret, code);
+    if (!valid) return false;
+
+    const lastStep = await this.storage.getLastStep(accountId);
+    if (step <= lastStep) return false;
+
+    await this.storage.setLastStep(accountId, step);
+    return true;
+  }
+  
+  async resetLastStep(accountId: string): Promise<void> {
+    await this.storage.deleteLastStep(accountId);
+  }
+}

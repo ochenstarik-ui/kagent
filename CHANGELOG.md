@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### Changed
+- Refactored TOTP authentication to separate unit-testable policy from PostgreSQL persistence adapter, fixing cross-instance replay issues and atomic one-time challenges.
+
 ### Added
 
 - Общая Python-библиотека событий с идемпотентным созданием потоков NATS JetStream, ограниченными попытками переподключения и интеграционным CI-тестом на настоящем брокере.

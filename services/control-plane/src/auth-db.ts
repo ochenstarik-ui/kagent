@@ -11,13 +11,18 @@ import {
   type AuthTokens,
   type LoginChallenge,
 } from "./auth.js";
-import { verifyCodeWithStep } from "./totp.js";
+import { TotpPolicy, InMemoryTotpStorage, PostgresTotpStorage } from "./totp.js";
 
 export class AuthStore {
-  private _challenges = new Map<string, { accountId: string; expiresAt: number; attempts: number }>();
-  private _totpLastSteps = new Map<string, number>();
+  private totpPolicy: TotpPolicy;
 
-  constructor(private pool: Pool) {}
+  constructor(private pool: Pool) {
+    if (process.env.NODE_ENV === "test") {
+      this.totpPolicy = new TotpPolicy(new InMemoryTotpStorage());
+    } else {
+      this.totpPolicy = new TotpPolicy(new PostgresTotpStorage(pool));
+    }
+  }
 
   // ── Registration ──────────────────────────
 
@@ -72,9 +77,7 @@ export class AuthStore {
     }
 
     if (account.totp_enabled) {
-      this._cleanupChallenges();
-      const challengeId = nanoid(20);
-      this._challenges.set(challengeId, { accountId: account.id, expiresAt: Date.now() + 5 * 60 * 1000, attempts: 0 });
+      const challengeId = await this.totpPolicy.createChallenge(account.id);
       return {
         account: { id: account.id, email: account.email, role: account.role },
         challenge: { challengeId }
@@ -162,7 +165,7 @@ export class AuthStore {
 
   async saveTotpSecret(accountId: string, secret: string): Promise<void> {
     await this.pool.query("UPDATE accounts SET totp_secret = $1 WHERE id = $2", [secret, accountId]);
-    this._totpLastSteps.delete(accountId);
+    await this.totpPolicy.resetLastStep(accountId);
   }
 
   async activateTotp(accountId: string): Promise<void> {
@@ -171,45 +174,37 @@ export class AuthStore {
 
   async disableTotp(accountId: string): Promise<void> {
     await this.pool.query("UPDATE accounts SET totp_enabled = false, totp_secret = NULL WHERE id = $1", [accountId]);
-    this._totpLastSteps.delete(accountId);
+    await this.totpPolicy.resetLastStep(accountId);
   }
 
   async consumeTotpCode(accountId: string, secret: string, code: string): Promise<boolean> {
-    const { valid, step } = verifyCodeWithStep(secret, code);
-    if (!valid) return false;
-
-    const lastStep = this._totpLastSteps.get(accountId) ?? -1;
-    if (step <= lastStep) return false;
-
-    this._totpLastSteps.set(accountId, step);
-    return true;
+    return this.totpPolicy.consumeTotpCode(accountId, secret, code);
   }
 
   async loginWithTotp(challengeId: string, code: string): Promise<{ account: any; tokens: AuthTokens } | { error: string }> {
-    this._cleanupChallenges();
-    const challenge = this._challenges.get(challengeId);
-    if (!challenge || challenge.expiresAt < Date.now() || challenge.attempts >= 5) {
-      return { error: "Invalid credentials" };
+    const challengeCheck = await this.totpPolicy.getAndVerifyChallenge(challengeId);
+    if ("error" in challengeCheck) {
+      return challengeCheck;
     }
 
-    const res = await this.pool.query("SELECT * FROM accounts WHERE id = $1 AND disabled_at IS NULL", [challenge.accountId]);
+    const res = await this.pool.query("SELECT * FROM accounts WHERE id = $1 AND disabled_at IS NULL", [challengeCheck.accountId]);
     if (res.rows.length === 0) {
-      challenge.attempts++;
+      await this.totpPolicy.failChallenge(challengeId);
       return { error: "Invalid credentials" };
     }
     const account = res.rows[0];
 
     if (!account.totp_enabled || !account.totp_secret) {
-      challenge.attempts++;
+      await this.totpPolicy.failChallenge(challengeId);
       return { error: "Invalid credentials" };
     }
 
-    if (!(await this.consumeTotpCode(account.id, account.totp_secret, code))) {
-      challenge.attempts++;
+    if (!(await this.totpPolicy.consumeTotpCode(account.id, account.totp_secret, code))) {
+      await this.totpPolicy.failChallenge(challengeId);
       return { error: "Invalid credentials" };
     }
 
-    this._challenges.delete(challengeId);
+    await this.totpPolicy.finishChallenge(challengeId);
 
     const session = await this._createSession(account.id);
     const tokens = generateTokens({
@@ -270,14 +265,5 @@ export class AuthStore {
       [nanoid(20), accountId]
     );
     return result.rows[0];
-  }
-
-  private _cleanupChallenges() {
-    const now = Date.now();
-    for (const [id, challenge] of this._challenges.entries()) {
-      if (challenge.expiresAt < now) {
-        this._challenges.delete(id);
-      }
-    }
   }
 }

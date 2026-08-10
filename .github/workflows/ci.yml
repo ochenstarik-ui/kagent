@@ -209,6 +209,7 @@ jobs:
           psql -h localhost -U kagent -d kagent -f migrations/001_initial_schema.sql
           psql -h localhost -U kagent -d kagent -f migrations/002_auth.sql
           psql -h localhost -U kagent -d kagent -f migrations/003_audit_immutability.sql
+          psql -h localhost -U kagent -d kagent -f migrations/004_totp_persistence.sql
       - name: Install dependencies
         run: |
           pnpm install --frozen-lockfile=false
