@@ -1,4 +1,7 @@
-# ADR-0022: Real Model Execution and Testing Cassettes
+# ADR 0024: Real Model Execution and Testing
+
+## Status
+Proposed
 
 ## Context
 

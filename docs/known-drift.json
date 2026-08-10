@@ -1,4 +1,11 @@
 {
   "version": 1,
-  "entries": []
+  "entries": [
+    {
+      "path": "services/reasoning-engine/conftest.py",
+      "reason": "Test configuration loaded automatically by pytest, not imported directly.",
+      "expires": "2026-12-31",
+      "follow_up_task": "None"
+    }
+  ]
 }

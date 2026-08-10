@@ -1,7 +1,7 @@
-# ADR 0023: Pipeline Integration with Reasoning Engine
+# ADR 0025: Pipeline Uses Reasoning Engine
 
 ## Status
-Accepted
+Proposed
 
 ## Context
 The Verified Coding Pipeline needs to operate autonomously by leveraging the Reasoning Engine instead of relying entirely on static templates. It must plan execution steps, generate code during the `DEVELOP` phase, and attempt autonomous repairs during the `REPAIR` phase based on test failures, while respecting path boundaries and accounting for token costs.

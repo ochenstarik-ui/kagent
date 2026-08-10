@@ -20,6 +20,9 @@ from typing import Any, Optional
 
 import httpx
 from services.nats.src.events import DomainEvent, NatsClient
+from .workspace import WorkspaceManager
+from .git_manager import GitManager
+from .ledger import EffectLedger
 
 logger = logging.getLogger(__name__)
 EventPublisher = Callable[[str, DomainEvent], Awaitable[None]]
@@ -46,6 +49,25 @@ class PipelinePhase(str, Enum):
     REVIEW = "review"
     REPAIR = "repair"
     DOD = "dod"  # Definition of Done
+
+
+@dataclass
+class TaskLimits:
+    max_time_ms: int = 600000  # 10 minutes default
+    max_cost: float = 1.0  # 1$ default
+    max_files: int = 10
+    max_steps: int = 20
+    max_repair_cycles: int = 3
+
+
+@dataclass
+class TaskContract:
+    allowed_paths: list[str] = field(default_factory=list)
+    forbidden_paths: list[str] = field(default_factory=list)
+    allowed_actions: list[str] = field(default_factory=list)
+    approval_required: bool = True
+    limits: TaskLimits = field(default_factory=TaskLimits)
+
 
 
 @dataclass
@@ -279,16 +301,21 @@ class PipelineEngine:
         project_id: str,
         task_type: str = "feature",
         task_description: str = "",
+        contract: TaskContract = None,
+        repository_url: str = "",
+        git_token: str = "",
+        use_model: bool = True,
         allowed_paths: list[str] = None,
         forbidden_paths: list[str] = None,
-        use_model: bool = True,
     ) -> PipelineResult:
-        if allowed_paths is None:
-            allowed_paths = ["."]
-        if forbidden_paths is None:
-            forbidden_paths = []
+        if contract is None:
+            contract = TaskContract(
+                allowed_paths=allowed_paths or ["."],
+                forbidden_paths=forbidden_paths or []
+            )
             
         correlation_id = str(uuid.uuid4())
+        ledger = EffectLedger()
         
         async with httpx.AsyncClient(timeout=120.0) as client:
             steps = await self.planner.plan(
@@ -305,6 +332,7 @@ class PipelineEngine:
                 steps=steps,
                 status=StepStatus.RUNNING,
             )
+            result.max_repair_cycles = contract.limits.max_repair_cycles
             self._results[task_id] = result
 
             started = time.time()
@@ -316,23 +344,49 @@ class PipelineEngine:
             payload={"taskType": task_type},
         )
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            service_secret = os.getenv(SERVICE_SECRET_ENV, "")
-            client_headers = getattr(client, "headers", None)
-            if client_headers is None:
-                client_headers = {}
-                client.headers = client_headers
-            client_headers[SERVICE_SECRET_HEADER] = service_secret
+        workspace_manager: WorkspaceManager | None = None
+        git_manager: GitManager | None = None
 
-            # Create workspace context
-            await client.post(f"{self.runtime_url}/v1/contexts", json={
-                "task_id": task_id,
-                "project_id": project_id,
-            })
+        if repository_url:
+            workspace_manager = WorkspaceManager(repository_url, task_id)
+            try:
+                ws_path = workspace_manager.setup()
+                # Setup contract for git_manager
+                from .git_manager import GitTaskContract
+                git_contract = GitTaskContract(
+                    id=task_id,
+                    allowed_paths=contract.allowed_paths,
+                    forbidden_paths=contract.forbidden_paths,
+                    base_sha="HEAD", # or something
+                    max_changed_files=contract.limits.max_files,
+                    max_minutes=contract.limits.max_time_ms / 60000,
+                    max_model_cost=contract.limits.max_cost,
+                    max_agent_turns=contract.limits.max_steps,
+                    max_repair_cycles=contract.limits.max_repair_cycles,
+                )
+                git_manager = GitManager(ws_path, run_id=correlation_id, ledger=ledger, contract=git_contract)
+            except Exception as e:
+                logger.error(f"Failed to setup workspace: {e}")
+                result.status = StepStatus.FAILED
+                result.completed_at = datetime.now(timezone.utc).isoformat()
+                return result
+
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                service_secret = os.getenv(SERVICE_SECRET_ENV, "")
+                client_headers = getattr(client, "headers", None)
+                if client_headers is None:
+                    client_headers = {}
+                    client.headers = client_headers
+                client_headers[SERVICE_SECRET_HEADER] = service_secret
+
+                # Create workspace context
+                await client.post(f"{self.runtime_url}/v1/contexts", json={
+                    "task_id": task_id,
+                    "project_id": project_id,
+                })
 
             for step in steps:
-                if result.repair_cycles >= result.max_repair_cycles and result.status == StepStatus.HUMAN_REQUIRED:
-                    break
 
                 step.status = StepStatus.RUNNING
                 step.started_at = datetime.now(timezone.utc).isoformat()
@@ -353,9 +407,11 @@ class PipelineEngine:
                     if step.tool in ("file_write", "file_read"):
                         path = step.params.get("path", "")
                         # Simple boundary check
-                        # If allowed_paths is ["."], we allow relative paths within "."
-                        # E.g. we reject paths starting with "/" or "../" if not in allowed
                         if ".." in path or path.startswith("/"):
+                            raise ValueError(f"Path {path} violates allowed_paths boundaries")
+                        # Check against contract
+                        allowed = any(path.startswith(a) or path == a or a == "." for a in contract.allowed_paths)
+                        if not allowed:
                             raise ValueError(f"Path {path} violates allowed_paths boundaries")
                             
                     if step.phase in (PipelinePhase.DEVELOP, PipelinePhase.REPAIR) and use_model:
@@ -442,6 +498,7 @@ class PipelineEngine:
                             step.status = StepStatus.FAILED
                             step.error = f"Repair failed: {'; '.join(violations)}"
                             result.status = StepStatus.HUMAN_REQUIRED
+                            break
                     else:
                         step.status = StepStatus.FAILED
                         step.error = "; ".join(violations) if violations else "Review failed"
@@ -473,6 +530,10 @@ class PipelineEngine:
                             payload={"path": artifact_path},
                         )
 
+        finally:
+            if workspace_manager:
+                workspace_manager.teardown()
+
         result.completed_at = datetime.now(timezone.utc).isoformat()
         result.total_duration_ms = int((time.time() - started) * 1000)
 
@@ -480,6 +541,27 @@ class PipelineEngine:
         failures = sum(1 for s in result.steps if s.status == StepStatus.FAILED)
         if result.status != StepStatus.HUMAN_REQUIRED:
             result.status = StepStatus.PASSED if failures == 0 else StepStatus.FAILED
+
+        if result.status == StepStatus.PASSED and git_manager and git_token:
+            try:
+                # Commit and push
+                git_manager.create_commit(f"Resolve task {task_id}: {task_description}")
+                git_manager.push(workspace_manager.branch_name)
+                
+                # Create PR
+                await git_manager.create_pull_request(
+                    token=git_token,
+                    repo_owner=workspace_manager.repository_url.split("/")[-2],
+                    repo_name=workspace_manager.repository_url.split("/")[-1].replace(".git", ""),
+                    title=f"Task {task_id}: {task_type.capitalize()}",
+                    body=f"Automated resolution for task {task_id}.\n\nModel costs: ${result.total_cost_usd:.2f}",
+                    head=workspace_manager.branch_name,
+                    base=workspace_manager.base_branch
+                )
+            except Exception as e:
+                logger.error(f"Git operations failed: {e}")
+                result.status = StepStatus.FAILED
+
         if result.status == StepStatus.FAILED:
             await self._emit_event(
                 "task.failed",
@@ -487,7 +569,7 @@ class PipelineEngine:
                 task_id=task_id,
                 correlation_id=correlation_id,
                 payload={
-                    "errors": [step.error for step in steps if step.error is not None],
+                    "errors": [step.error for step in result.steps if step.error is not None],
                 },
             )
 

@@ -268,7 +268,9 @@ class ReasoningEngine:
         messages: list[dict[str, str]],
     ) -> ModelExecution:
         """Execute the actual model call."""
-        import os, json, hashlib
+        import os
+        import json
+        import hashlib
         from pathlib import Path
         
         mode = os.environ.get("EXECUTION_MODE", "live").lower()
