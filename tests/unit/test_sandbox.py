@@ -1,9 +1,16 @@
 import os
-from unittest.mock import patch
-import pytest
 from pathlib import Path
+from unittest.mock import patch
 
-from services.agent_runtime.src.runtime import AgentRuntime, ShellTool, FileReadTool, FileWriteTool
+import pytest
+
+from services.agent_runtime.src.runtime import (
+    AgentRuntime,
+    FileReadTool,
+    FileWriteTool,
+    ShellTool,
+)
+
 
 @pytest.fixture
 def mock_bwrap():
@@ -32,7 +39,7 @@ async def test_shell_tool_missing_bwrap():
 async def test_agent_runtime_missing_bwrap():
     # If bwrap is missing, agent runtime fails to execute ANY tool
     runtime = AgentRuntime(Path("/tmp/kagent-test-runtime"))
-    ctx = await runtime.create_context("task-x", "project-x")
+    await runtime.create_context("task-x", "project-x")
     
     with patch("os.path.exists", return_value=False):
         result = await runtime.execute_tool("task-x", "shell", {"command": "echo 1"})
