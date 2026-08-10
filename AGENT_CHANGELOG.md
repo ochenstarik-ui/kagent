@@ -1,5 +1,14 @@
 # Agent Changelog
 
+## 2026-08-10 — Importable Agent Runtime package
+
+- `services/agent_runtime` is the single canonical source and Python import path; no
+  compatibility directory or import-path workaround is retained.
+- Docker build inputs and capability metadata now resolve to that package.
+- The required Python CI evidence includes `tests/unit/test_runtime.py`. The complete unit
+  directory remains blocked independently by the removed `services.auth` package still
+  imported by `tests/unit/test_totp.py`.
+
 ## 2026-08-10 — TOTP second factor in Control Plane
 
 - TOTP is implemented beside the existing TypeScript session and password flow; the dead
