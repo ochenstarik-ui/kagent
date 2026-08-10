@@ -64,6 +64,7 @@ services:
       CONTROL_PLANE_URL: "http://control-plane:8100"
       REASONING_ENGINE_URL: "http://reasoning-engine:8200"
       OBSERVABILITY_URL: "http://observability:8500"
+      WEB_URL: "http://web:3000"
       KAGENT_SERVICE_SECRET: ${KAGENT_SERVICE_SECRET:-}
       RUST_LOG: ${RUST_LOG:-info}
     depends_on:
@@ -157,6 +158,17 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    environment:
+      GATEWAY_URL: "http://gateway:8080"
+      PORT: "3000"
+    depends_on:
+      gateway:
+        condition: service_healthy
 
 volumes:
   postgres-data:
