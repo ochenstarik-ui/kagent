@@ -261,6 +261,29 @@ def _load_compose_config() -> dict[str, object]:
     return yaml.safe_load((ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
 
 
+def _port_is_loopback(port: object) -> bool:
+    if isinstance(port, str):
+        return port.startswith("127.0.0.1:")
+    if isinstance(port, dict):
+        return port.get("host_ip") == "127.0.0.1"
+    return False
+
+
+@pytest.mark.parametrize(
+    ("port", "expected"),
+    [
+        ("127.0.0.1:5432:5432", True),
+        ({"host_ip": "127.0.0.1", "published": "5432", "target": 5432}, True),
+        ({"host_ip": "0.0.0.0", "published": "5432", "target": 5432}, False),
+    ],
+)
+def test_loopback_port_detection_supports_compose_formats(
+    port: object,
+    expected: bool,
+) -> None:
+    assert _port_is_loopback(port) is expected
+
+
 def test_compose_does_not_publish_internal_service_ports() -> None:
     config = _load_compose_config()
     services = config["services"]
@@ -276,7 +299,7 @@ def test_compose_does_not_publish_internal_service_ports() -> None:
 
     for service_name in ("postgres", "nats", "minio"):
         ports = services[service_name]["ports"]
-        assert all(port.startswith("127.0.0.1:") for port in ports)
+        assert all(_port_is_loopback(port) for port in ports)
 
     assert services["gateway"]["ports"]
     for service_name in ("gateway", "agent-runtime", "pipeline"):
