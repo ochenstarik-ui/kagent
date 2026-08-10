@@ -28,7 +28,10 @@ async def test_broker_failure_does_not_interrupt_pipeline(
         text = ""
 
         def json(self) -> dict[str, str]:
-            return {"path": "artifact.txt"}
+            return {"path": "artifact.txt", "request_id": "req-1", "success": True, "content": "{}", "model_id": "test"}
+
+        def raise_for_status(self) -> None:
+            pass
 
     class FakeAsyncClient:
         def __init__(self, timeout: float) -> None:
@@ -46,9 +49,9 @@ async def test_broker_failure_does_not_interrupt_pipeline(
 
     monkeypatch.setattr(pipeline_module.httpx, "AsyncClient", FakeAsyncClient)
     engine = PipelineEngine(event_publisher=unavailable_publisher)
-    engine.planner.plan = lambda task_type: [
-        PipelineStep(PipelinePhase.DEVELOP, "Write artifact", "file_write", {})
-    ]
+    async def mock_plan(*args, **kwargs):
+        return [PipelineStep(PipelinePhase.DEVELOP, "Write artifact", "file_write", {})]
+    engine.planner.plan = mock_plan
 
     result = await engine.execute("task-1", "project-1")
 
@@ -80,7 +83,10 @@ async def test_failed_step_publishes_task_failed(
         text = ""
 
         def json(self) -> dict[str, object]:
-            return {}
+            return {"request_id": "req-1", "success": True, "content": "{}", "model_id": "test"}
+
+        def raise_for_status(self) -> None:
+            pass
 
     class FakeAsyncClient:
         def __init__(self, timeout: float) -> None:
@@ -100,9 +106,9 @@ async def test_failed_step_publishes_task_failed(
 
     monkeypatch.setattr(pipeline_module.httpx, "AsyncClient", FakeAsyncClient)
     engine = PipelineEngine(event_publisher=publisher)
-    engine.planner.plan = lambda task_type: [
-        PipelineStep(PipelinePhase.DEVELOP, "Write artifact", "file_write", {})
-    ]
+    async def mock_plan(*args, **kwargs):
+        return [PipelineStep(PipelinePhase.DEVELOP, "Write artifact", "file_write", {})]
+    engine.planner.plan = mock_plan
 
     result = await engine.execute("task-1", "project-1")
 

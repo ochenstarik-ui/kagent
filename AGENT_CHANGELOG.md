@@ -1,5 +1,51 @@
 # Agent Changelog
 
+## 2026-08-10 — Decision review: statuses, scope and scheduling
+
+The project owner delegated the outstanding decisions with a single instruction: make the
+project work. They are recorded here so that the reasoning survives the conversation.
+
+### Decision statuses
+
+Reviewed as a whole; see `docs/adr/README.md` for the result. Decisions that already govern
+daily work moved to `accepted`; decisions covering work not yet started stay `proposed`; the
+four decisions marked accepted by their own authors are ratified rather than reverted,
+because they are sound and implemented, while the rule that executors do not set that field
+stands.
+
+### ADR-0017 is deferred, not rejected
+
+The single-tool execution surface remains the intended direction and stays `proposed`. It is
+not scheduled until the product vertical is delivered and the sandbox exists. Accepting it now
+would replace the tool registry that the vertical is being built on, postponing a working
+product without making anything safer — the sandbox is a separate precondition either way.
+
+### Scope decisions confirmed
+
+The Personal Assistant Agent stays in scope; ADR-0015 depends on it. Satellite and federation
+stay out of the plan until a separate specification defines ownership and conflict
+resolution. Subagent recursion stays permitted to depth two, which is what makes the current
+orchestration mode legal.
+
+### Third-party code
+
+The existing rule stands unchanged: architecture may be borrowed, source files may not.
+Nothing currently under way is blocked by it, so the licence-compliance overhead of vendoring
+buys nothing today.
+
+### Order of work
+
+Product vertical first — wire the git manager, integrate the model loop, prove it end to end
+through production classes — then the runtime sandbox. Until the sandbox exists, KAgent must
+not be installed on a host reachable from the internet: the runtime executes model-authored
+code, and the perimeter added in ADR-0025 protects the boundary, not the inside.
+
+### Repository hygiene
+
+Branches whose work reached `main` were deleted. Branches holding unlanded work were kept.
+The unreviewed nine-thousand-line draft opened before any of these rules existed was closed;
+its branch is preserved.
+
 ## 2026-08-10 — Importable Agent Runtime package
 
 - `services/agent_runtime` is the single canonical source and Python import path; no

@@ -11,9 +11,9 @@ We decided to implement the TOTP second-factor authentication directly within th
 
 - We use standard `node:crypto` library to provide `HMAC-SHA1` calculations and constant-time string comparisons required for TOTP (RFC 6238). No external dependencies were added.
 - The PostgreSQL schema already included `totp_secret` and `totp_enabled` columns in `accounts`. We enforce constraints using these directly.
-- We utilize an in-memory `Map` within the `control-plane` instance to temporarily hold login challenges (acting as pre-auth session states while the user is supplying the 2FA code) and store the last accepted TOTP timestamp to prevent replay attacks, adhering to the requirement of not modifying the database schema.
+- We utilize PostgreSQL to store login challenges (acting as pre-auth session states while the user is supplying the 2FA code) in a `totp_challenges` table, and store the last accepted TOTP timestamp directly in the `accounts` table (`totp_last_step`) to prevent replay attacks. This separates the TOTP policy logic from the persistence layer and enables seamless scaling across multiple `control-plane` instances.
 
 ## Consequences
 - **Positive:** Lower latency on login, fewer network dependencies, and a simplified architecture with one fewer service to deploy.
 - **Positive:** Alignment with existing session management capabilities inside the `control-plane`.
-- **Negative:** If `control-plane` is scaled out to multiple instances, the in-memory maps for replay protection and login challenges will fail unless sticky sessions are used or we fallback to modifying the database schema to store challenges and last-used steps. For now, this is deemed an acceptable trade-off given the constraints.
+- **Positive:** Safely supports cross-instance scaling without requiring sticky sessions, thanks to atomic PostgreSQL storage for challenges and replay markers.
