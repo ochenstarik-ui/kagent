@@ -57,6 +57,7 @@ jobs:
           tests/unit/test_roadmap_guard.py
           tests/unit/test_event_streaming.py
           tests/unit/test_pipeline_events.py
+          tests/unit/test_runtime.py
       - run: python scripts/validate_repository.py
       - run: python scripts/drift_check.py
 
