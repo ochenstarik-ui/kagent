@@ -2,6 +2,7 @@
 
 import importlib.util
 import json as json_module
+import os
 import shutil
 import subprocess
 import sys
@@ -245,20 +246,49 @@ async def test_pipeline_signs_runtime_requests_with_service_secret(
     assert captured_headers[SERVICE_SECRET_HEADER] == SERVICE_SECRET
 
 
-def _load_compose_config() -> dict[str, object]:
+def _load_compose_config() -> tuple[dict[str, object], str]:
     if shutil.which("docker"):
+        compose_env = os.environ.copy()
+        compose_env["KAGENT_SERVICE_SECRET"] = SERVICE_SECRET
         completed = subprocess.run(
             ["docker", "compose", "config", "--format", "json"],
             cwd=ROOT,
             check=True,
             capture_output=True,
             text=True,
+            env=compose_env,
         )
-        return json_module.loads(completed.stdout)
+        return json_module.loads(completed.stdout), SERVICE_SECRET
 
     import yaml
 
-    return yaml.safe_load((ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
+    config = yaml.safe_load((ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
+    return config, "${KAGENT_SERVICE_SECRET:-}"
+
+
+def test_compose_loader_injects_service_secret_for_rendering(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_env: dict[str, str] = {}
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        del kwargs["cwd"], kwargs["check"], kwargs["capture_output"], kwargs["text"]
+        captured_env.update(kwargs["env"])
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json_module.dumps({"services": {}}),
+            stderr="",
+        )
+
+    monkeypatch.setattr(shutil, "which", lambda command: f"/usr/bin/{command}")
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    config, expected_service_secret = _load_compose_config()
+
+    assert config == {"services": {}}
+    assert expected_service_secret == SERVICE_SECRET
+    assert captured_env["KAGENT_SERVICE_SECRET"] == SERVICE_SECRET
 
 
 def _port_is_loopback(port: object) -> bool:
@@ -285,7 +315,7 @@ def test_loopback_port_detection_supports_compose_formats(
 
 
 def test_compose_does_not_publish_internal_service_ports() -> None:
-    config = _load_compose_config()
+    config, expected_service_secret = _load_compose_config()
     services = config["services"]
 
     for service_name in (
@@ -305,5 +335,5 @@ def test_compose_does_not_publish_internal_service_ports() -> None:
     for service_name in ("gateway", "agent-runtime", "pipeline"):
         assert (
             services[service_name]["environment"]["KAGENT_SERVICE_SECRET"]
-            == "${KAGENT_SERVICE_SECRET:-}"
+            == expected_service_secret
         )
