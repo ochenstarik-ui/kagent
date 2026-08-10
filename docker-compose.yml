@@ -135,10 +135,13 @@ services:
     environment:
       RUNTIME_URL: "http://agent-runtime:8300"
       REASONING_URL: "http://reasoning-engine:8200"
+      NATS_URL: "nats://nats:4222"
     depends_on:
       agent-runtime:
         condition: service_healthy
       reasoning-engine:
+        condition: service_healthy
+      nats:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8400/health/live')"]

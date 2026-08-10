@@ -149,10 +149,10 @@
       "id": "nats.events",
       "stage": "0.8",
       "name": "NATS JetStream event streaming",
-      "module": "services/nats/src/events.py",
-      "owner": "services/nats",
-      "evidence": ["unit_tests", "python_ci"],
-      "artifacts": ["services/nats/src/events.py", "tests/unit/test_events.py"]
+      "module": "packages/py_events/events.py",
+      "owner": "packages/py_events",
+      "evidence": ["python_ci", "nats_events_ci"],
+      "artifacts": ["packages/py_events/events.py", "services/pipeline/src/pipeline.py", "tests/unit/test_event_streaming.py", "tests/integration/test_nats_events.py"]
     },
     {
       "id": "orchestrator.multi_agent",
@@ -234,6 +234,7 @@
     "rust_ci": { "type": "ci", "job": "rust", "allow_failure": false },
     "python_ci": { "type": "ci", "job": "python", "allow_failure": false },
     "measurability_ci": { "type": "ci", "job": "measurability", "allow_failure": false },
+    "nats_events_ci": { "type": "ci", "job": "nats-events", "allow_failure": false },
     "compose_syntax": { "type": "command", "command": "docker compose config -q", "allow_failure": false }
   },
   "route_table": {

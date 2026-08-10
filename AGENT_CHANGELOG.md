@@ -1,5 +1,27 @@
 # Agent Changelog
 
+## 2026-08-10 — Shared Python event delivery
+
+### Decision
+
+- The NATS event implementation lives in `packages/py_events`, matching the shared Python
+  SDK boundary from specification section 7; `services/nats/src/events.py` remains a thin
+  compatibility import for existing callers; pipeline reaches the single shared
+  implementation through that import.
+- `services/pipeline` is the first production importer and emits versioned lifecycle events
+  as best-effort side effects. Broker failures are logged and events are dropped so pipeline
+  execution remains independent from NATS availability.
+- Guaranteed delivery remains deferred to the effect-ledger outbox in ADR-0010.
+
+### Evidence
+
+- Unit coverage verifies envelope serialization, stream reuse, bounded connection options,
+  lifecycle publication and broker-failure isolation.
+- CI job `nats-events` starts JetStream in a `nats:2.11-alpine` service container and proves
+  publication, durable consumption and repeated stream initialization.
+- Pipeline and orchestrator align on maintained `nats-py` 2.15.0 under the Apache-2.0
+  license; this task does not add orchestrator event integration.
+
 ## 2026-08-10 — Reasoning Engine contract publication
 
 ### Implemented

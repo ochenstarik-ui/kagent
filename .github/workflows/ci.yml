@@ -46,7 +46,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install ruff pytest
+      - run: pip install -r services/pipeline/requirements.txt ruff pytest pytest-asyncio
       - run: ruff check services/ scripts/ tests/unit/ --select E --ignore E501,E402
       - name: Run measurability unit tests
         run: >-
@@ -55,6 +55,8 @@ jobs:
           tests/unit/test_eval_suite.py
           tests/unit/test_drift_check.py
           tests/unit/test_roadmap_guard.py
+          tests/unit/test_event_streaming.py
+          tests/unit/test_pipeline_events.py
       - run: python scripts/validate_repository.py
       - run: python scripts/drift_check.py
 
@@ -75,6 +77,32 @@ jobs:
         with:
           name: computed-roadmap
           path: docs/ROADMAP.md
+
+  nats-events:
+    runs-on: ubuntu-latest
+    services:
+      nats:
+        image: nats:2.11-alpine
+        command: --js --store_dir /data --http_port 8222
+        ports:
+          - 4223:4222
+          - 8222:8222
+        options: >-
+          --health-cmd "wget -qO- http://127.0.0.1:8222/healthz"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install event test dependencies
+        run: pip install -r services/pipeline/requirements.txt pytest pytest-asyncio
+      - name: Verify JetStream event delivery
+        env:
+          NATS_URL: nats://127.0.0.1:4223
+        run: python -m pytest tests/integration/test_nats_events.py -q
 
   integration:
     runs-on: ubuntu-latest
