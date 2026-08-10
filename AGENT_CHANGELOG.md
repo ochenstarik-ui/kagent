@@ -9,6 +9,18 @@
   directory remains blocked independently by the removed `services.auth` package still
   imported by `tests/unit/test_totp.py`.
 
+## 2026-08-10 — CI evidence-fed computed roadmap
+
+- The `measurability` job runs after every evidence-producing job and consumes only the
+  in-run `needs` context; it does not query GitHub APIs or require write permissions.
+- Each job publishes the outcome of every canonical registry command it covers. Only a
+  successful step verifies command evidence, so a failed job can preserve earlier passing
+  evidence while a declared but skipped command remains unverified.
+- The uploaded roadmap records the run link and commit for accepted evidence while the
+  committed deterministic roadmap remains protected by the existing manual-edit guard.
+- The forbidden-path drift rule now distinguishes standalone measurability work from a
+  product change that attempts to modify eval or measurability artifacts in the same task.
+
 ## 2026-08-10 — TOTP second factor in Control Plane
 
 - TOTP is implemented beside the existing TypeScript session and password flow; the dead
