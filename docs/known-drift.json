@@ -1,11 +1,4 @@
 {
   "version": 1,
-  "entries": [
-    {
-      "path": "services/auth/src/totp.py",
-      "reason": "The standalone TOTP module is tested but not imported by a production service entry point.",
-      "expires": "2026-10-01",
-      "follow_up_task": "KAGENT-INTEGRATE-AUTH-TOTP"
-    }
-  ]
+  "entries": []
 }

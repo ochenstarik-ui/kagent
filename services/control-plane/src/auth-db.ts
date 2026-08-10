@@ -9,9 +9,14 @@ import {
   hashRefreshToken,
   type TokenPayload,
   type AuthTokens,
+  type LoginChallenge,
 } from "./auth.js";
+import { verifyCodeWithStep } from "./totp.js";
 
 export class AuthStore {
+  private _challenges = new Map<string, { accountId: string; expiresAt: number; attempts: number }>();
+  private _totpLastSteps = new Map<string, number>();
+
   constructor(private pool: Pool) {}
 
   // ── Registration ──────────────────────────
@@ -51,7 +56,7 @@ export class AuthStore {
 
   // ── Login ─────────────────────────────────
 
-  async login(email: string, password: string): Promise<{ account: any; tokens: AuthTokens } | { error: string }> {
+  async login(email: string, password: string): Promise<{ account: any; tokens: AuthTokens } | { account: any; challenge: LoginChallenge } | { error: string }> {
     const result = await this.pool.query(
       "SELECT * FROM accounts WHERE email = $1 AND disabled_at IS NULL",
       [email]
@@ -64,6 +69,16 @@ export class AuthStore {
     const valid = await verifyPassword(password, account.password_hash);
     if (!valid) {
       return { error: "Invalid credentials" };
+    }
+
+    if (account.totp_enabled) {
+      this._cleanupChallenges();
+      const challengeId = nanoid(20);
+      this._challenges.set(challengeId, { accountId: account.id, expiresAt: Date.now() + 5 * 60 * 1000, attempts: 0 });
+      return {
+        account: { id: account.id, email: account.email, role: account.role },
+        challenge: { challengeId }
+      };
     }
 
     // Create session
@@ -137,6 +152,89 @@ export class AuthStore {
     );
   }
 
+  // ── TOTP ──────────────────────────────────
+
+  async getTotpStatus(accountId: string): Promise<{ secret: string | null; enabled: boolean }> {
+    const res = await this.pool.query("SELECT totp_secret, totp_enabled FROM accounts WHERE id = $1", [accountId]);
+    if (res.rows.length === 0) return { secret: null, enabled: false };
+    return { secret: res.rows[0].totp_secret, enabled: res.rows[0].totp_enabled };
+  }
+
+  async saveTotpSecret(accountId: string, secret: string): Promise<void> {
+    await this.pool.query("UPDATE accounts SET totp_secret = $1 WHERE id = $2", [secret, accountId]);
+    this._totpLastSteps.delete(accountId);
+  }
+
+  async activateTotp(accountId: string): Promise<void> {
+    await this.pool.query("UPDATE accounts SET totp_enabled = true WHERE id = $1", [accountId]);
+  }
+
+  async disableTotp(accountId: string): Promise<void> {
+    await this.pool.query("UPDATE accounts SET totp_enabled = false, totp_secret = NULL WHERE id = $1", [accountId]);
+    this._totpLastSteps.delete(accountId);
+  }
+
+  async consumeTotpCode(accountId: string, secret: string, code: string): Promise<boolean> {
+    const { valid, step } = verifyCodeWithStep(secret, code);
+    if (!valid) return false;
+
+    const lastStep = this._totpLastSteps.get(accountId) ?? -1;
+    if (step <= lastStep) return false;
+
+    this._totpLastSteps.set(accountId, step);
+    return true;
+  }
+
+  async loginWithTotp(challengeId: string, code: string): Promise<{ account: any; tokens: AuthTokens } | { error: string }> {
+    this._cleanupChallenges();
+    const challenge = this._challenges.get(challengeId);
+    if (!challenge || challenge.expiresAt < Date.now() || challenge.attempts >= 5) {
+      return { error: "Invalid credentials" };
+    }
+
+    const res = await this.pool.query("SELECT * FROM accounts WHERE id = $1 AND disabled_at IS NULL", [challenge.accountId]);
+    if (res.rows.length === 0) {
+      challenge.attempts++;
+      return { error: "Invalid credentials" };
+    }
+    const account = res.rows[0];
+
+    if (!account.totp_enabled || !account.totp_secret) {
+      challenge.attempts++;
+      return { error: "Invalid credentials" };
+    }
+
+    if (!(await this.consumeTotpCode(account.id, account.totp_secret, code))) {
+      challenge.attempts++;
+      return { error: "Invalid credentials" };
+    }
+
+    this._challenges.delete(challengeId);
+
+    const session = await this._createSession(account.id);
+    const tokens = generateTokens({
+      sub: account.id,
+      email: account.email,
+      role: account.role,
+      sessionId: session.id,
+    });
+
+    await this.pool.query(
+      "UPDATE sessions SET refresh_token_hash = $1 WHERE id = $2",
+      [hashRefreshToken(tokens.refreshToken), session.id]
+    );
+
+    return {
+      account: { id: account.id, email: account.email, role: account.role },
+      tokens,
+    };
+  }
+
+  async verifyAccountPassword(accountId: string, password: string): Promise<boolean> {
+    const res = await this.pool.query("SELECT password_hash FROM accounts WHERE id = $1", [accountId]);
+    if (res.rows.length === 0) return false;
+    return verifyPassword(password, res.rows[0].password_hash);
+  }
   // ── Membership ────────────────────────────
 
   async addMember(projectId: string, accountId: string, role: string): Promise<void> {
@@ -172,5 +270,14 @@ export class AuthStore {
       [nanoid(20), accountId]
     );
     return result.rows[0];
+  }
+
+  private _cleanupChallenges() {
+    const now = Date.now();
+    for (const [id, challenge] of this._challenges.entries()) {
+      if (challenge.expiresAt < now) {
+        this._challenges.delete(id);
+      }
+    }
   }
 }

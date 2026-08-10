@@ -45,6 +45,10 @@ export interface AuthTokens {
   expiresIn: number;
 }
 
+export interface LoginChallenge {
+  challengeId: string;
+}
+
 // ── Password ──────────────────────────────
 
 export async function hashPassword(password: string): Promise<string> {
