@@ -2,12 +2,6 @@
   "version": 1,
   "entries": [
     {
-      "path": "packages/contracts/src/reasoning.ts",
-      "reason": "The reasoning contract is not exported by the contracts package entry point.",
-      "expires": "2026-10-01",
-      "follow_up_task": "KAGENT-EXPORT-REASONING-CONTRACT"
-    },
-    {
       "path": "services/auth/src/totp.py",
       "reason": "The standalone TOTP module is tested but not imported by a production service entry point.",
       "expires": "2026-10-01",
