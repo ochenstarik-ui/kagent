@@ -105,18 +105,24 @@ async def test_audit_append_only():
     """)
     assert event["action"] == "test.action"
     
-    # Verify UPDATE is revoked (permission denied)
+    # UPDATE must be rejected. A warning is not enough: before migration 003 this
+    # branch silently passed, because the revoke in migration 001 does not apply to
+    # the table owner the application connects as.
     try:
         await conn.execute("UPDATE audit_events SET action = 'hacked' WHERE id = 'test-audit-1'")
-        print("  ⚠ UPDATE not blocked — check REVOKE in migration")
+        raise AssertionError("UPDATE on audit_events was not blocked")
+    except AssertionError:
+        raise
     except Exception as e:
         assert "permission denied" in str(e).lower()
         print("  ✅ UPDATE blocked correctly")
-    
-    # Verify DELETE is revoked
+
+    # DELETE of a record whose project still exists must be rejected as well.
     try:
         await conn.execute("DELETE FROM audit_events WHERE id = 'test-audit-1'")
-        print("  ⚠ DELETE not blocked")
+        raise AssertionError("DELETE on audit_events was not blocked")
+    except AssertionError:
+        raise
     except Exception as e:
         assert "permission denied" in str(e).lower()
         print("  ✅ DELETE blocked correctly")
@@ -238,7 +244,9 @@ async def test_concurrent():
 async def cleanup():
     """Remove test data."""
     conn = await asyncpg.connect(DATABASE_URL)
-    await conn.execute("DELETE FROM audit_events WHERE id LIKE 'test-%'")
+    # Audit rows are append-only and cannot be removed directly (migration 003).
+    # They disappear together with their project through the foreign key cascade,
+    # which is the only legitimate path.
     await conn.execute("DELETE FROM sessions WHERE id LIKE 'test-%'")
     await conn.execute("DELETE FROM accounts WHERE id LIKE 'test-%'")
     await conn.execute("DELETE FROM tasks WHERE id LIKE 'test-%'")
