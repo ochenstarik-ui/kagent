@@ -6,9 +6,12 @@ v0.5: Planner → Developer → Tester → Reviewer → Repair loop → DoD chec
 import asyncio
 import hashlib
 import json
+import logging
 import os
 import re
 import time
+import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -16,6 +19,11 @@ from pathlib import Path
 from typing import Any, Optional
 
 import httpx
+from services.nats.src.events import DomainEvent, NatsClient
+
+logger = logging.getLogger(__name__)
+EventPublisher = Callable[[str, DomainEvent], Awaitable[None]]
+DEFAULT_NATS_URL = "nats://localhost:4222"
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -138,15 +146,59 @@ class Reviewer:
 # ═══════════════════════════════════════════════════════════════════════
 
 class PipelineEngine:
-    def __init__(self, runtime_url: str = "http://localhost:8300", reasoning_url: str = "http://localhost:8200"):
+    def __init__(
+        self,
+        runtime_url: str = "http://localhost:8300",
+        reasoning_url: str = "http://localhost:8200",
+        event_publisher: EventPublisher | None = None,
+    ):
         self.runtime_url = runtime_url
         self.reasoning_url = reasoning_url
         self.planner = Planner()
         self.reviewer = Reviewer()
         self._results: dict[str, PipelineResult] = {}
+        nats_url = os.getenv("NATS_URL") or DEFAULT_NATS_URL
+        self._event_client = NatsClient(nats_url)
+        self._event_delivery_disabled = False
+        self._event_publisher = event_publisher or self._publish_to_nats
+
+    async def _publish_to_nats(self, subject: str, event: DomainEvent) -> None:
+        if self._event_delivery_disabled:
+            raise RuntimeError("NATS event delivery is disabled for this pipeline process")
+        try:
+            if not self._event_client.connected:
+                await self._event_client.connect()
+            await self._event_client.publish(subject, event)
+        except Exception:
+            self._event_delivery_disabled = True
+            raise
+
+    async def _emit_event(
+        self,
+        event_type: str,
+        *,
+        project_id: str,
+        task_id: str,
+        correlation_id: str,
+        payload: dict[str, Any],
+    ) -> None:
+        event = DomainEvent(
+            type=event_type,
+            aggregate_id=task_id,
+            aggregate_type="task",
+            project_id=project_id,
+            task_id=task_id,
+            correlation_id=correlation_id,
+            data=payload,
+        )
+        try:
+            await self._event_publisher(event_type, event)
+        except Exception as error:  # noqa: BLE001 - event delivery is an isolated best-effort boundary
+            logger.warning("Failed to publish %s event: %s", event_type, error)
 
     async def execute(self, task_id: str, project_id: str, task_type: str = "feature") -> PipelineResult:
         steps = self.planner.plan(task_type)
+        correlation_id = str(uuid.uuid4())
         result = PipelineResult(
             task_id=task_id,
             project_id=project_id,
@@ -156,6 +208,13 @@ class PipelineEngine:
         self._results[task_id] = result
 
         started = time.time()
+        await self._emit_event(
+            "task.started",
+            project_id=project_id,
+            task_id=task_id,
+            correlation_id=correlation_id,
+            payload={"taskType": task_type},
+        )
 
         async with httpx.AsyncClient(timeout=120.0) as client:
             # Create workspace context
@@ -172,6 +231,17 @@ class PipelineEngine:
 
                 step.status = StepStatus.RUNNING
                 step.started_at = datetime.now(timezone.utc).isoformat()
+                await self._emit_event(
+                    "agent.started",
+                    project_id=project_id,
+                    task_id=task_id,
+                    correlation_id=correlation_id,
+                    payload={
+                        "phase": step.phase.value,
+                        "description": step.description,
+                        "tool": step.tool,
+                    },
+                )
 
                 try:
                     # Execute tool via runtime
@@ -215,6 +285,27 @@ class PipelineEngine:
                     step.error = str(e)
 
                 step.completed_at = datetime.now(timezone.utc).isoformat()
+                if step.status == StepStatus.PASSED:
+                    await self._emit_event(
+                        "agent.completed",
+                        project_id=project_id,
+                        task_id=task_id,
+                        correlation_id=correlation_id,
+                        payload={
+                            "phase": step.phase.value,
+                            "description": step.description,
+                            "status": step.status.value,
+                        },
+                    )
+                    artifact_path = step.output.get("path")
+                    if isinstance(artifact_path, str) and artifact_path:
+                        await self._emit_event(
+                            "artifact.created",
+                            project_id=project_id,
+                            task_id=task_id,
+                            correlation_id=correlation_id,
+                            payload={"path": artifact_path},
+                        )
 
         result.completed_at = datetime.now(timezone.utc).isoformat()
         result.total_duration_ms = int((time.time() - started) * 1000)
@@ -222,6 +313,16 @@ class PipelineEngine:
         # Overall status
         failures = sum(1 for s in steps if s.status == StepStatus.FAILED)
         result.status = StepStatus.PASSED if failures == 0 else StepStatus.FAILED
+        if result.status == StepStatus.FAILED:
+            await self._emit_event(
+                "task.failed",
+                project_id=project_id,
+                task_id=task_id,
+                correlation_id=correlation_id,
+                payload={
+                    "errors": [step.error for step in steps if step.error is not None],
+                },
+            )
 
         return result
 

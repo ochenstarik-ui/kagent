@@ -8,6 +8,38 @@
   forbids a schema change. Horizontal scaling therefore requires sticky routing until a
   persistent challenge/replay store is approved.
 - No dependency is added; HMAC-SHA1 and constant-time comparison use `node:crypto`.
+## 2026-08-10 — Shared Python event delivery
+
+### Decision
+
+- The NATS event implementation lives in `packages/py_events`, matching the shared Python
+  SDK boundary from specification section 7; `services/nats/src/events.py` remains a thin
+  compatibility import for existing callers; pipeline reaches the single shared
+  implementation through that import.
+- `services/pipeline` is the first production importer and emits versioned lifecycle events
+  as best-effort side effects. Broker failures are logged and events are dropped so pipeline
+  execution remains independent from NATS availability.
+- Guaranteed delivery remains deferred to the effect-ledger outbox in ADR-0010.
+
+### Evidence
+
+- Unit coverage verifies envelope serialization, stream reuse, bounded connection options,
+  lifecycle publication and broker-failure isolation.
+- CI job `nats-events` starts JetStream in a `nats:2.11-alpine` service container and proves
+  publication, durable consumption and repeated stream initialization.
+- Pipeline and orchestrator align on maintained `nats-py` 2.15.0 under the Apache-2.0
+  license; this task does not add orchestrator event integration.
+
+## 2026-08-10 — Reasoning Engine contract publication
+
+### Implemented
+
+- Exported the existing Reasoning Engine types from the public `@kagent/contracts` entry
+  point as a backward-compatible contract extension.
+- Added a source-level compatibility test that compares request fields and routing enum
+  values with the Python Reasoning Engine declarations.
+- Removed the resolved unreachable-module exception for the reasoning contract.
+
 ## 2026-07-24 — Foundation Bootstrap 0.1.0-dev
 
 ### Source of truth

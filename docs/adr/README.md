@@ -39,6 +39,8 @@ Statuses:
 | 0018 | Session as an append-only tree | proposed |
 | 0019 | Privacy-constrained provider routing | proposed |
 | 0020 | Protocol versioning and capability negotiation | proposed |
+| 0021 | Public Reasoning Engine contract | accepted |
+| 0022 | Shared Python event delivery | accepted |
 | 0023 | TOTP authentication in Control Plane | accepted |
 
 ADR-0004 through ADR-0016 are specified in sections 35–41 of `docs/KAGENT_FULL_PRODUCT_SPEC.md`.
