@@ -208,10 +208,13 @@ jobs:
         env:
           PGPASSWORD: kagent
         run: |
-          psql -h localhost -U kagent -d kagent -f migrations/001_initial_schema.sql
-          psql -h localhost -U kagent -d kagent -f migrations/002_auth.sql
-          psql -h localhost -U kagent -d kagent -f migrations/003_audit_immutability.sql
-          psql -h localhost -U kagent -d kagent -f migrations/004_totp_persistence.sql
+          set -e
+          # Apply every migration in order. A named list silently skips new files:
+          # 005_recovery_codes.sql was added by a task and never reached this step.
+          for migration in $(ls migrations/*.sql | sort); do
+            echo "applying $migration"
+            psql -h localhost -U kagent -d kagent -v ON_ERROR_STOP=1 -f "$migration"
+          done
       - name: Install dependencies
         run: |
           pnpm install --frozen-lockfile=false

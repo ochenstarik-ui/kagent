@@ -220,8 +220,19 @@ async def test_pipeline_signs_runtime_requests_with_service_secret(
 
     monkeypatch.setenv("KAGENT_SERVICE_SECRET", SERVICE_SECRET)
     monkeypatch.setattr(pipeline_module.httpx, "AsyncClient", FakeAsyncClient)
+    async def empty_plan(**kwargs: object) -> list[object]:
+        """Planner stub.
+
+        The planner became asynchronous and gained task_description, client,
+        reasoning_url and use_model when the model loop landed. The stub accepts
+        whatever the caller passes, so a future signature change surfaces on the
+        assertion below rather than on the stub itself.
+        """
+        del kwargs
+        return []
+
     engine = pipeline_module.PipelineEngine(event_publisher=discard_event)
-    engine.planner.plan = lambda task_type: []
+    engine.planner.plan = empty_plan
 
     await engine.execute("task-1", "project-1")
 
