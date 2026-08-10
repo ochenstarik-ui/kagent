@@ -41,7 +41,14 @@ def test_expired_known_drift_is_rejected() -> None:
     assert errors == ["known drift entry 0 expired on 2026-08-08"]
 
 
-def test_repository_reachability_detects_exact_known_four() -> None:
+def test_repository_reachability_matches_the_allowlist_exactly() -> None:
+    """Detection and the known-drift allowlist must describe the same set.
+
+    The expected set is read from docs/known-drift.json rather than hard-coded,
+    so that connecting a module requires removing its allowlist entry in the same
+    change. A hard-coded list would need editing by hand on every fix, which is
+    exactly the manual bookkeeping this check exists to remove.
+    """
     capabilities = drift_check.load_capabilities()
 
     unreachable = drift_check.find_unreachable_modules(
@@ -49,12 +56,9 @@ def test_repository_reachability_detects_exact_known_four() -> None:
         capabilities["capabilities"],
     )
 
-    assert unreachable == [
-        "packages/contracts/src/reasoning.ts",
-        "services/auth/src/totp.py",
-        "services/control-plane/src/db.ts",
-        "services/nats/src/events.py",
-    ]
+    allowlisted = sorted(entry["path"] for entry in drift_check.load_known_drift()["entries"])
+
+    assert sorted(unreachable) == allowlisted
 
 
 def test_unknown_unreachable_module_is_rejected() -> None:
