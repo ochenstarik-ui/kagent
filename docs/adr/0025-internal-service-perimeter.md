@@ -1,7 +1,7 @@
-# ADR 0024: Internal Service Perimeter and Shared Secret
+# ADR 0025: Internal Service Perimeter and Shared Secret
 
 ## Status
-Accepted
+Proposed
 
 ## Context
 

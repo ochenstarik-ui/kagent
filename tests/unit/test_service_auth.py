@@ -1,39 +1,21 @@
 """Service-to-service authentication tests for action endpoints."""
 
-import importlib.util
 import json as json_module
 import os
 import shutil
 import subprocess
-import sys
 from pathlib import Path
-from types import ModuleType
 from uuid import uuid4
 
 import httpx
 import pytest
 
+from services.agent_runtime.src import runtime as runtime_module
 from services.pipeline.src import pipeline as pipeline_module
 
 ROOT = Path(__file__).resolve().parents[2]
 SERVICE_SECRET = "test-service-secret"
 SERVICE_SECRET_HEADER = "x-kagent-service-secret"
-
-
-def _load_runtime_module() -> ModuleType:
-    module_name = "kagent_test_agent_runtime"
-    module_path = ROOT / "services" / "agent-runtime" / "src" / "runtime.py"
-    spec = importlib.util.spec_from_file_location(module_name, module_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError("cannot load agent runtime module")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-runtime_module = _load_runtime_module()
-
 
 async def _request(
     app: object,
