@@ -1,7 +1,7 @@
-# ADR 0024: Git Contour and Task Contract
+# ADR 0026: Git Contour and Task Contract
 
 ## Status
-Accepted
+Proposed
 
 ## Context
 The Verified Coding Pipeline needs to operate on isolated Git workspaces to prevent interfering with the user's base branch and to fulfill the requirement of atomic commits with task and run metadata. Furthermore, a strict task contract must be enforced to limit the paths the agent can modify, actions it can take, and resources (cost, tokens, repair cycles) it can consume.

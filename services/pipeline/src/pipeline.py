@@ -367,8 +367,6 @@ class PipelineEngine:
                 })
 
             for step in steps:
-                if result.repair_cycles >= result.max_repair_cycles and result.status == StepStatus.HUMAN_REQUIRED:
-                    break
 
                 step.status = StepStatus.RUNNING
                 step.started_at = datetime.now(timezone.utc).isoformat()
@@ -392,7 +390,7 @@ class PipelineEngine:
                         if ".." in path or path.startswith("/"):
                             raise ValueError(f"Path {path} violates allowed_paths boundaries")
                         # Check against contract
-                        allowed = any(path.startswith(a) or path == a for a in contract.allowed_paths)
+                        allowed = any(path.startswith(a) or path == a or a == "." for a in contract.allowed_paths)
                         if not allowed:
                             raise ValueError(f"Path {path} violates allowed_paths boundaries")
                             
@@ -480,6 +478,7 @@ class PipelineEngine:
                             step.status = StepStatus.FAILED
                             step.error = f"Repair failed: {'; '.join(violations)}"
                             result.status = StepStatus.HUMAN_REQUIRED
+                            break
                     else:
                         step.status = StepStatus.FAILED
                         step.error = "; ".join(violations) if violations else "Review failed"
