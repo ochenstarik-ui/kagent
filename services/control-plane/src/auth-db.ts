@@ -162,6 +162,7 @@ export class AuthStore {
 
   async saveTotpSecret(accountId: string, secret: string): Promise<void> {
     await this.pool.query("UPDATE accounts SET totp_secret = $1 WHERE id = $2", [secret, accountId]);
+    this._totpLastSteps.delete(accountId);
   }
 
   async activateTotp(accountId: string): Promise<void> {
@@ -170,42 +171,44 @@ export class AuthStore {
 
   async disableTotp(accountId: string): Promise<void> {
     await this.pool.query("UPDATE accounts SET totp_enabled = false, totp_secret = NULL WHERE id = $1", [accountId]);
+    this._totpLastSteps.delete(accountId);
+  }
+
+  async consumeTotpCode(accountId: string, secret: string, code: string): Promise<boolean> {
+    const { valid, step } = verifyCodeWithStep(secret, code);
+    if (!valid) return false;
+
+    const lastStep = this._totpLastSteps.get(accountId) ?? -1;
+    if (step <= lastStep) return false;
+
+    this._totpLastSteps.set(accountId, step);
+    return true;
   }
 
   async loginWithTotp(challengeId: string, code: string): Promise<{ account: any; tokens: AuthTokens } | { error: string }> {
     this._cleanupChallenges();
     const challenge = this._challenges.get(challengeId);
-    if (!challenge || challenge.expiresAt < Date.now()) {
-      return { error: "Invalid or expired challenge" };
-    }
-
-    if (challenge.attempts >= 5) {
-      return { error: "Too many failed attempts" };
+    if (!challenge || challenge.expiresAt < Date.now() || challenge.attempts >= 5) {
+      return { error: "Invalid credentials" };
     }
 
     const res = await this.pool.query("SELECT * FROM accounts WHERE id = $1 AND disabled_at IS NULL", [challenge.accountId]);
     if (res.rows.length === 0) {
-      return { error: "Account not found or disabled" };
+      challenge.attempts++;
+      return { error: "Invalid credentials" };
     }
     const account = res.rows[0];
 
     if (!account.totp_enabled || !account.totp_secret) {
-      return { error: "TOTP not enabled for this account" };
-    }
-
-    const { valid, step } = verifyCodeWithStep(account.totp_secret, code);
-    if (!valid) {
-      challenge.attempts++;
-      return { error: "Invalid credentials" }; // Hide "invalid code" as requested
-    }
-
-    const lastStep = this._totpLastSteps.get(account.id) || 0;
-    if (step <= lastStep) {
       challenge.attempts++;
       return { error: "Invalid credentials" };
     }
 
-    this._totpLastSteps.set(account.id, step);
+    if (!(await this.consumeTotpCode(account.id, account.totp_secret, code))) {
+      challenge.attempts++;
+      return { error: "Invalid credentials" };
+    }
+
     this._challenges.delete(challengeId);
 
     const session = await this._createSession(account.id);
@@ -232,7 +235,6 @@ export class AuthStore {
     if (res.rows.length === 0) return false;
     return verifyPassword(password, res.rows[0].password_hash);
   }
-
   // ── Membership ────────────────────────────
 
   async addMember(projectId: string, accountId: string, role: string): Promise<void> {

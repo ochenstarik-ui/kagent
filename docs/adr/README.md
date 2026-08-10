@@ -39,6 +39,7 @@ Statuses:
 | 0018 | Session as an append-only tree | proposed |
 | 0019 | Privacy-constrained provider routing | proposed |
 | 0020 | Protocol versioning and capability negotiation | proposed |
+| 0023 | TOTP authentication in Control Plane | accepted |
 
 ADR-0004 through ADR-0016 are specified in sections 35–41 of `docs/KAGENT_FULL_PRODUCT_SPEC.md`.
 ADR-0017 through ADR-0020 are specified in sections 42–51. They move to `accepted` when the project owner approves them.

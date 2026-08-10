@@ -60,7 +60,7 @@ export function generateCode(secretBuffer: Buffer, timeStep: number): string {
   timeBuffer.writeBigUInt64BE(BigInt(timeStep), 0);
 
   const hmac = createHmac("sha1", secretBuffer).update(timeBuffer).digest();
-  
+
   const offset = hmac[hmac.length - 1]! & 0xf;
   const codeInt =
     ((hmac[offset]! & 0x7f) << 24) |

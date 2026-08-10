@@ -1,5 +1,13 @@
 # Agent Changelog
 
+## 2026-08-10 — TOTP second factor in Control Plane
+
+- TOTP is implemented beside the existing TypeScript session and password flow; the dead
+  standalone Python module is removed instead of introducing a network hop in login.
+- Login challenges and accepted time steps are process-local because task C4 explicitly
+  forbids a schema change. Horizontal scaling therefore requires sticky routing until a
+  persistent challenge/replay store is approved.
+- No dependency is added; HMAC-SHA1 and constant-time comparison use `node:crypto`.
 ## 2026-07-24 — Foundation Bootstrap 0.1.0-dev
 
 ### Source of truth

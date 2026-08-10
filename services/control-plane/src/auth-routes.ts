@@ -3,7 +3,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { AuthStore } from "./auth-db.js";
 import { authMiddleware, type AuthenticatedRequest } from "./auth.js";
-import { generateSecret, generateUri, verifyCodeWithStep } from "./totp.js";
+import { generateSecret, generateUri } from "./totp.js";
 import { Pool } from "pg";
 
 export async function registerAuthRoutes(app: FastifyInstance, pool: Pool) {
@@ -115,9 +115,7 @@ export async function registerAuthRoutes(app: FastifyInstance, pool: Pool) {
 
     const secret = generateSecret();
     await authStore.saveTotpSecret(principal.sub, secret);
-    const uri = generateUri(principal.email, secret);
-
-    return { secret, uri };
+    return { secret, uri: generateUri(principal.email, secret) };
   });
 
   app.post("/v1/auth/totp/activate", { preHandler: [authMiddleware] }, async (req: FastifyRequest, reply: FastifyReply) => {
@@ -126,16 +124,13 @@ export async function registerAuthRoutes(app: FastifyInstance, pool: Pool) {
 
     const principal = (req as AuthenticatedRequest).principal!;
     const status = await authStore.getTotpStatus(principal.sub);
-    
     if (status.enabled) {
       return reply.status(400).send({ code: "invalid_state", message: "TOTP already enabled" });
     }
     if (!status.secret) {
       return reply.status(400).send({ code: "invalid_state", message: "Not enrolled" });
     }
-
-    const { valid } = verifyCodeWithStep(status.secret, code);
-    if (!valid) {
+    if (!(await authStore.consumeTotpCode(principal.sub, status.secret, code))) {
       return reply.status(400).send({ code: "invalid_code", message: "Invalid code" });
     }
 
@@ -150,20 +145,15 @@ export async function registerAuthRoutes(app: FastifyInstance, pool: Pool) {
     }
 
     const principal = (req as AuthenticatedRequest).principal!;
-    
     const validPassword = await authStore.verifyAccountPassword(principal.sub, password);
-    if (!validPassword) {
-      return reply.status(401).send({ code: "unauthorized", message: "Invalid credentials" });
-    }
-
     const status = await authStore.getTotpStatus(principal.sub);
-    if (!status.enabled || !status.secret) {
-      return reply.status(400).send({ code: "invalid_state", message: "TOTP not enabled" });
-    }
-
-    const { valid } = verifyCodeWithStep(status.secret, code);
-    if (!valid) {
-      return reply.status(400).send({ code: "invalid_code", message: "Invalid code" }); // Must not distinguish wrong pass vs wrong code here per requirement? Actually it already said "Invalid credentials" above.
+    if (
+      !validPassword ||
+      !status.enabled ||
+      !status.secret ||
+      !(await authStore.consumeTotpCode(principal.sub, status.secret, code))
+    ) {
+      return reply.status(401).send({ code: "unauthorized", message: "Invalid credentials" });
     }
 
     await authStore.disableTotp(principal.sub);
@@ -178,12 +168,9 @@ export async function registerAuthRoutes(app: FastifyInstance, pool: Pool) {
 
     const result = await authStore.loginWithTotp(challengeId, code);
     if ("error" in result) {
-      return reply.status(401).send({ code: "unauthorized", message: result.error });
+      return reply.status(401).send({ code: "unauthorized", message: "Invalid credentials" });
     }
 
-    return {
-      account: result.account,
-      tokens: result.tokens,
-    };
+    return { account: result.account, tokens: result.tokens };
   });
 }
