@@ -36,6 +36,7 @@ class StepStatus(str, Enum):
     PASSED = "passed"
     FAILED = "failed"
     SKIPPED = "skipped"
+    HUMAN_REQUIRED = "human_required"
 
 
 class PipelinePhase(str, Enum):
@@ -59,6 +60,10 @@ class PipelineStep:
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     repair_attempts: int = 0
+    model_id: Optional[str] = None
+    tokens_input: int = 0
+    tokens_output: int = 0
+    cost_usd: float = 0.0
 
 
 @dataclass
@@ -72,6 +77,10 @@ class PipelineResult:
     max_repair_cycles: int = 3
     started_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     completed_at: Optional[str] = None
+    total_model_calls: int = 0
+    total_tokens_input: int = 0
+    total_tokens_output: int = 0
+    total_cost_usd: float = 0.0
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -108,8 +117,76 @@ class Planner:
         ],
     }
 
-    def plan(self, task_type: str = "feature") -> list[PipelineStep]:
-        return self.TEMPLATES.get(task_type, self.TEMPLATES["feature"])
+    async def plan(
+        self,
+        task_type: str,
+        task_description: str,
+        client: httpx.AsyncClient,
+        reasoning_url: str,
+        use_model: bool = True
+    ) -> list[PipelineStep]:
+        if not use_model:
+            return self.TEMPLATES.get(task_type, self.TEMPLATES["feature"])
+        
+        # Call reasoning engine to get a plan
+        try:
+            # 1. Decide
+            decide_res = await client.post(
+                f"{reasoning_url}/v1/decide",
+                json={"capability": "planning", "task_type": task_type}
+            )
+            decide_res.raise_for_status()
+            req_id = decide_res.json()["request_id"]
+            
+            # 2. Execute
+            exec_res = await client.post(
+                f"{reasoning_url}/v1/execute",
+                json={
+                    "request_id": req_id,
+                    "messages": [
+                        {"role": "system", "content": "You are a planner. Return a JSON array of steps. Each step must have 'phase' (plan, develop, test, review, dod), 'description', 'tool', and 'params' (dict)."},
+                        {"role": "user", "content": f"Plan for task: {task_description}"}
+                    ]
+                }
+            )
+            exec_res.raise_for_status()
+            data = exec_res.json()
+            
+            if not data.get("success"):
+                raise Exception(f"Reasoning engine failed: {data.get('error')}")
+            
+            content = data.get("content", "")
+            # Try to parse JSON from content
+            # find array
+            start = content.find("[")
+            end = content.rfind("]")
+            if start == -1 or end == -1:
+                raise ValueError("No JSON array found in output")
+            
+            parsed = json.loads(content[start:end+1])
+            steps = []
+            for s in parsed:
+                steps.append(PipelineStep(
+                    phase=PipelinePhase(s["phase"].lower()),
+                    description=s.get("description", ""),
+                    tool=s.get("tool", ""),
+                    params=s.get("params", {}),
+                    model_id=data.get("model_id"),
+                    tokens_input=data.get("tokens_input", 0),
+                    tokens_output=data.get("tokens_output", 0),
+                    cost_usd=data.get("cost_usd", 0.0),
+                ))
+            return steps
+            
+        except Exception as e:
+            # Create a failed step indicating plan failure instead of silent fallback
+            return [PipelineStep(
+                phase=PipelinePhase.PLAN,
+                description="Generate plan from model",
+                status=StepStatus.FAILED,
+                error=f"Failed to generate plan: {str(e)}",
+                output={"raw_output": content if 'content' in locals() else str(e)}
+            )]
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -196,18 +273,41 @@ class PipelineEngine:
         except Exception as error:  # noqa: BLE001 - event delivery is an isolated best-effort boundary
             logger.warning("Failed to publish %s event: %s", event_type, error)
 
-    async def execute(self, task_id: str, project_id: str, task_type: str = "feature") -> PipelineResult:
-        steps = self.planner.plan(task_type)
+    async def execute(
+        self,
+        task_id: str,
+        project_id: str,
+        task_type: str = "feature",
+        task_description: str = "",
+        allowed_paths: list[str] = None,
+        forbidden_paths: list[str] = None,
+        use_model: bool = True,
+    ) -> PipelineResult:
+        if allowed_paths is None:
+            allowed_paths = ["."]
+        if forbidden_paths is None:
+            forbidden_paths = []
+            
         correlation_id = str(uuid.uuid4())
-        result = PipelineResult(
-            task_id=task_id,
-            project_id=project_id,
-            steps=steps,
-            status=StepStatus.RUNNING,
-        )
-        self._results[task_id] = result
+        
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            steps = await self.planner.plan(
+                task_type=task_type,
+                task_description=task_description,
+                client=client,
+                reasoning_url=self.reasoning_url,
+                use_model=use_model
+            )
+            
+            result = PipelineResult(
+                task_id=task_id,
+                project_id=project_id,
+                steps=steps,
+                status=StepStatus.RUNNING,
+            )
+            self._results[task_id] = result
 
-        started = time.time()
+            started = time.time()
         await self._emit_event(
             "task.started",
             project_id=project_id,
@@ -224,9 +324,7 @@ class PipelineEngine:
             })
 
             for step in steps:
-                if result.repair_cycles >= result.max_repair_cycles:
-                    step.status = StepStatus.FAILED
-                    step.error = "Max repair cycles exceeded"
+                if result.repair_cycles >= result.max_repair_cycles and result.status == StepStatus.HUMAN_REQUIRED:
                     break
 
                 step.status = StepStatus.RUNNING
@@ -244,6 +342,66 @@ class PipelineEngine:
                 )
 
                 try:
+                    # Validate paths if tool is file_write or shell touching files
+                    if step.tool in ("file_write", "file_read"):
+                        path = step.params.get("path", "")
+                        # Simple boundary check
+                        # If allowed_paths is ["."], we allow relative paths within "."
+                        # E.g. we reject paths starting with "/" or "../" if not in allowed
+                        if ".." in path or path.startswith("/"):
+                            raise ValueError(f"Path {path} violates allowed_paths boundaries")
+                            
+                    if step.phase in (PipelinePhase.DEVELOP, PipelinePhase.REPAIR) and use_model:
+                        # 1. Gather context
+                        context_msg = f"Task: {task_description}\n"
+                        if step.phase == PipelinePhase.REPAIR:
+                            context_msg += f"Repair context: {'; '.join(violations if 'violations' in locals() else [])}\n"
+                        
+                        # 2. Decide & Execute via Reasoning Engine
+                        decide_res = await client.post(
+                            f"{self.reasoning_url}/v1/decide",
+                            json={"capability": "code_generation", "task_type": task_type}
+                        )
+                        decide_res.raise_for_status()
+                        req_id = decide_res.json()["request_id"]
+                        
+                        exec_res = await client.post(
+                            f"{self.reasoning_url}/v1/execute",
+                            json={
+                                "request_id": req_id,
+                                "messages": [
+                                    {"role": "system", "content": "You are a developer. Output JSON with 'tool' and 'params' to execute."},
+                                    {"role": "user", "content": context_msg}
+                                ]
+                            }
+                        )
+                        exec_res.raise_for_status()
+                        model_data = exec_res.json()
+                        
+                        if not model_data.get("success"):
+                            raise Exception(f"Model failed: {model_data.get('error')}")
+                        
+                        step.model_id = model_data.get("model_id")
+                        step.tokens_input = model_data.get("tokens_input", 0)
+                        step.tokens_output = model_data.get("tokens_output", 0)
+                        step.cost_usd = model_data.get("cost_usd", 0.0)
+                        
+                        result.total_model_calls += 1
+                        result.total_tokens_input += step.tokens_input
+                        result.total_tokens_output += step.tokens_output
+                        result.total_cost_usd += step.cost_usd
+                        
+                        # Parse tool/params from model content
+                        content = model_data.get("content", "{}")
+                        try:
+                            start = content.find("{")
+                            end = content.rfind("}")
+                            parsed = json.loads(content[start:end+1])
+                            step.tool = parsed.get("tool", step.tool)
+                            step.params = parsed.get("params", step.params)
+                        except Exception:
+                            pass # fallback to step defaults
+
                     # Execute tool via runtime
                     if step.tool:
                         resp = await client.post(f"{self.runtime_url}/v1/execute", json={
@@ -276,6 +434,7 @@ class PipelineEngine:
                         else:
                             step.status = StepStatus.FAILED
                             step.error = f"Repair failed: {'; '.join(violations)}"
+                            result.status = StepStatus.HUMAN_REQUIRED
                     else:
                         step.status = StepStatus.FAILED
                         step.error = "; ".join(violations) if violations else "Review failed"
@@ -311,8 +470,9 @@ class PipelineEngine:
         result.total_duration_ms = int((time.time() - started) * 1000)
 
         # Overall status
-        failures = sum(1 for s in steps if s.status == StepStatus.FAILED)
-        result.status = StepStatus.PASSED if failures == 0 else StepStatus.FAILED
+        failures = sum(1 for s in result.steps if s.status == StepStatus.FAILED)
+        if result.status != StepStatus.HUMAN_REQUIRED:
+            result.status = StepStatus.PASSED if failures == 0 else StepStatus.FAILED
         if result.status == StepStatus.FAILED:
             await self._emit_event(
                 "task.failed",
