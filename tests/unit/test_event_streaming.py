@@ -173,6 +173,48 @@ async def test_subscribe_uses_same_stream_definition_as_publish() -> None:
 
 
 @pytest.mark.asyncio
+async def test_subscription_stops_after_bounded_fetch_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fetch_calls = 0
+    original_sleep = asyncio.sleep
+
+    class FakeSubscription:
+        async def fetch(self, count: int, timeout: float) -> list[object]:
+            nonlocal fetch_calls
+            fetch_calls += 1
+            raise OSError("broker unavailable")
+
+    class FakeJetStream:
+        async def stream_info(self, name: str) -> None:
+            del name
+
+        async def pull_subscribe(
+            self,
+            *,
+            subject: str,
+            durable: str,
+            stream: str,
+            config: object,
+        ) -> FakeSubscription:
+            del subject, durable, stream, config
+            return FakeSubscription()
+
+    async def yielding_sleep(delay: float) -> None:
+        assert delay == 1
+        await original_sleep(0)
+
+    monkeypatch.setattr(event_module.asyncio, "sleep", yielding_sleep)
+    client = NatsClient()
+    client._js = FakeJetStream()
+
+    await client.subscribe("task.*", "bounded-retry", lambda event: original_sleep(0))
+    listener = client._subscriptions["task.*"]
+    await asyncio.wait_for(listener, timeout=0.2)
+
+    assert fetch_calls == 3
+
+@pytest.mark.asyncio
 async def test_request_returns_decoded_response() -> None:
     class Response:
         data = b'{"status":"ok"}'

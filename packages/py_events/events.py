@@ -20,6 +20,7 @@ from nats.js.errors import BadRequestError, NotFoundError
 from nats.js.errors import Error as JetStreamError
 
 logger = logging.getLogger(__name__)
+MAX_SUBSCRIPTION_FETCH_FAILURES = 3
 
 
 @dataclass(frozen=True)
@@ -170,9 +171,11 @@ class NatsClient:
         )
 
         async def listen() -> None:
+            consecutive_fetch_failures = 0
             while True:
                 try:
                     messages = await subscription.fetch(1, timeout=10)
+                    consecutive_fetch_failures = 0
                     for message in messages:
                         try:
                             await handler(DomainEvent.from_json(message.data))
@@ -182,7 +185,14 @@ class NatsClient:
                 except (TimeoutError, NatsTimeoutError):
                     continue
                 except (NatsError, JetStreamError, OSError) as error:
+                    consecutive_fetch_failures += 1
                     logger.warning("NATS subscription fetch failed: %s", error)
+                    if consecutive_fetch_failures >= MAX_SUBSCRIPTION_FETCH_FAILURES:
+                        logger.error(
+                            "NATS subscription stopped after %d consecutive fetch failures",
+                            consecutive_fetch_failures,
+                        )
+                        return
                     await asyncio.sleep(1)
 
         self._subscriptions[subject] = asyncio.create_task(listen())
