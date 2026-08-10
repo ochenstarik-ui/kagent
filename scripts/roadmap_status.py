@@ -30,6 +30,7 @@ class EvidenceResult:
     passed: bool
     output: str
     duration_ms: float
+    provenance: str | None = None
 
 
 @dataclass
@@ -46,12 +47,31 @@ class CapabilityStatus:
 
     @property
     def status(self) -> str:
-        return "verified" if self.passed else "unverified"
+        if self.passed:
+            return "verified"
+        if any(result.passed for result in self.evidence_results):
+            return "partial"
+        return "unverified"
 
 
 def load_capabilities() -> dict[str, Any]:
     with CAPABILITIES_PATH.open("r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def load_ci_results(path: Path) -> dict[str, Any]:
+    with path.open("r", encoding="utf-8") as file:
+        results = json.load(file)
+    if not isinstance(results, dict):
+        raise TypeError("CI results must be a JSON object")
+    run = results.get("run")
+    required = ("id", "commit", "timestamp", "url")
+    if not isinstance(run, dict) or any(
+        not isinstance(run.get(field), str) or not run[field]
+        for field in required
+    ):
+        raise ValueError("CI results require complete run provenance")
+    return results
 
 
 def run_command(command: str, timeout: float = 120.0) -> EvidenceResult:
@@ -90,8 +110,38 @@ def check_artifact(path: str) -> bool:
     return (ROOT / path).exists()
 
 
-def evaluate_ci_job(job: str, ci_results: dict[str, Any] | None) -> EvidenceResult:
-    jobs = ci_results.get("jobs", {}) if ci_results else {}
+def ci_provenance(result: object, ci_results: object) -> str | None:
+    if not isinstance(result, dict) or not isinstance(ci_results, dict):
+        return None
+    run = ci_results.get("run")
+    if not isinstance(run, dict):
+        return None
+    provenance_fields = {
+        "run_id": run.get("id"),
+        "commit": run.get("commit"),
+        "timestamp": run.get("timestamp"),
+        "url": run.get("url"),
+    }
+    if any(not isinstance(value, str) or not value for value in provenance_fields.values()):
+        return None
+    if any(result.get(field) != value for field, value in provenance_fields.items()):
+        return None
+    run_id = provenance_fields["run_id"]
+    commit = provenance_fields["commit"]
+    url = provenance_fields["url"]
+    run_reference = f"CI run {run_id}"
+    run_reference = f"[{run_reference}]({url})"
+    return f"{run_reference}, commit `{str(commit)[:7]}`"
+
+
+def evaluate_ci_job(
+    job: str,
+    ci_results: dict[str, Any] | None,
+    *,
+    require_provenance: bool = False,
+) -> EvidenceResult:
+    ci_results = ci_results if isinstance(ci_results, dict) else {}
+    jobs = ci_results.get("jobs", {})
     result = jobs.get(job) if isinstance(jobs, dict) else None
     if result is None and ci_results:
         result = ci_results.get(job)
@@ -103,18 +153,64 @@ def evaluate_ci_job(job: str, ci_results: dict[str, Any] | None) -> EvidenceResu
             duration_ms=0.0,
         )
 
-    if isinstance(result, dict):
-        conclusion = result.get("conclusion", result.get("status", "unknown"))
-    elif isinstance(result, bool):
-        conclusion = "success" if result else "failure"
-    else:
-        conclusion = str(result)
-    passed = str(conclusion).lower() in {"success", "passed"}
+    if not isinstance(result, dict):
+        return EvidenceResult(
+            name=job,
+            passed=False,
+            output=f"invalid CI result for job: {job}",
+            duration_ms=0.0,
+        )
+    conclusion = result.get("conclusion", result.get("status", "unknown"))
+    provenance = ci_provenance(result, ci_results)
+    requires_provenance = require_provenance or "run" in ci_results
+    passed = str(conclusion).lower() in {"success", "passed"} and (
+        provenance is not None or not requires_provenance
+    )
+    provenance_error = (
+        " (invalid CI provenance)"
+        if requires_provenance and provenance is None
+        else ""
+    )
     return EvidenceResult(
         name=job,
         passed=passed,
-        output=f"CI job {job}: {conclusion}",
+        output=f"CI job {job}: {conclusion}{provenance_error}",
         duration_ms=0.0,
+        provenance=provenance,
+    )
+
+
+def evaluate_ci_command(
+    command: str, ci_results: dict[str, Any] | None
+) -> EvidenceResult:
+    ci_results = ci_results if isinstance(ci_results, dict) else {}
+    commands = ci_results.get("commands", {})
+    result = commands.get(command) if isinstance(commands, dict) else None
+    if result is None:
+        return EvidenceResult(
+            name=command,
+            passed=False,
+            output="command evidence not executed",
+            duration_ms=0.0,
+        )
+    if not isinstance(result, dict):
+        return EvidenceResult(
+            name=command,
+            passed=False,
+            output="invalid CI command evidence",
+            duration_ms=0.0,
+        )
+    conclusion = result.get("conclusion", result.get("status", "unknown"))
+    job = result.get("job", "unknown")
+    provenance = ci_provenance(result, ci_results)
+    passed = str(conclusion).lower() in {"success", "passed"} and provenance is not None
+    provenance_error = " (invalid CI provenance)" if provenance is None else ""
+    return EvidenceResult(
+        name=command,
+        passed=passed,
+        output=f"CI command {command} ({job}): {conclusion}{provenance_error}",
+        duration_ms=0.0,
+        provenance=provenance,
     )
 
 
@@ -136,23 +232,21 @@ def evaluate_capability(
         elif spec.get("type") == "command" and execute_commands:
             results.append(run_command(spec["command"], timeout=spec.get("timeout", 120.0)))
         elif spec.get("type") == "command":
-            results.append(
-                EvidenceResult(
-                    name=spec["command"],
-                    passed=False,
-                    output="command evidence not executed",
-                    duration_ms=0.0,
-                )
-            )
+            results.append(evaluate_ci_command(spec["command"], ci_results))
         elif spec.get("type") == "ci":
             job = spec.get("job", ev)
-            ci_result = evaluate_ci_job(job, ci_results)
+            ci_result = evaluate_ci_job(
+                job,
+                ci_results,
+                require_provenance=not execute_commands,
+            )
             results.append(
                 EvidenceResult(
                     name=ev,
                     passed=ci_result.passed,
                     output=ci_result.output,
                     duration_ms=ci_result.duration_ms,
+                    provenance=ci_result.provenance,
                 )
             )
         elif spec.get("type") == "manual":
@@ -221,8 +315,11 @@ def build_roadmap(capabilities: dict[str, Any], execute_commands: bool = True) -
             marker = "x" if cs.passed else " "
             lines.append(f"- [{marker}] [{cap.get('id')}] {cap.get('name')} — {cs.status}")
             for er in cs.evidence_results:
-                if not er.passed:
-                    lines.append(f"    - {er.name}: {er.output[:120]}")
+                if not er.passed or er.provenance:
+                    detail = er.output[:120]
+                    if er.provenance:
+                        detail = f"{detail} — {er.provenance}"
+                    lines.append(f"    - {er.name}: {detail}")
             if cs.missing_artifacts:
                 lines.append(f"    - missing artifacts: {', '.join(cs.missing_artifacts)}")
         lines.append("")
@@ -259,8 +356,7 @@ def main() -> int:
 
     capabilities = load_capabilities()
     if args.ci_results:
-        with args.ci_results.open("r", encoding="utf-8") as f:
-            capabilities["_ci_results"] = json.load(f)
+        capabilities["_ci_results"] = load_ci_results(args.ci_results)
 
     roadmap = build_roadmap(capabilities, execute_commands=not args.no_run_commands)
     if args.check:

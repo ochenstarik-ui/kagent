@@ -11,6 +11,8 @@ permissions:
 jobs:
   node:
     runs-on: ubuntu-latest
+    outputs:
+      commands: ${{ steps.command_evidence.outputs.commands }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -21,26 +23,43 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile=false
-      - run: pnpm typecheck
-      - run: pnpm test
-      - run: pnpm build
+      - id: typecheck
+        run: pnpm typecheck
+      - id: unit_tests
+        run: pnpm test
+      - id: build
+        run: pnpm build
+      - name: Publish executed command set
+        id: command_evidence
+        if: ${{ always() }}
+        run: >-
+          echo 'commands={"pnpm typecheck":"${{ steps.typecheck.outcome }}","pnpm test":"${{ steps.unit_tests.outcome }}","pnpm build":"${{ steps.build.outcome }}"}' >> "$GITHUB_OUTPUT"
 
   rust:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: services/gateway
+    outputs:
+      commands: ${{ steps.command_evidence.outputs.commands }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      - run: cargo fmt --check
-      - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo test
+      - id: rust_fmt
+        run: cargo fmt --manifest-path services/gateway/Cargo.toml --check
+      - id: rust_clippy
+        run: cargo clippy --manifest-path services/gateway/Cargo.toml --all-targets -- -D warnings
+      - id: rust_tests
+        run: cargo test --manifest-path services/gateway/Cargo.toml
+      - name: Publish executed command set
+        id: command_evidence
+        if: ${{ always() }}
+        run: >-
+          echo 'commands={"cargo fmt --manifest-path services/gateway/Cargo.toml --check":"${{ steps.rust_fmt.outcome }}","cargo clippy --manifest-path services/gateway/Cargo.toml --all-targets -- -D warnings":"${{ steps.rust_clippy.outcome }}","cargo test --manifest-path services/gateway/Cargo.toml":"${{ steps.rust_tests.outcome }}"}' >> "$GITHUB_OUTPUT"
 
   python:
     runs-on: ubuntu-latest
+    outputs:
+      commands: ${{ steps.command_evidence.outputs.commands }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -57,26 +76,73 @@ jobs:
           tests/unit/test_roadmap_guard.py
           tests/unit/test_event_streaming.py
           tests/unit/test_pipeline_events.py
-      - run: python scripts/validate_repository.py
-      - run: python scripts/drift_check.py
+          tests/unit/test_ci_evidence.py
+          tests/unit/test_runtime.py
+          tests/unit/test_service_auth.py
+      - id: repo_validation
+        run: python scripts/validate_repository.py
+      - id: drift_check
+        run: python scripts/drift_check.py
+      - name: Publish executed command set
+        id: command_evidence
+        if: ${{ always() }}
+        run: >-
+          echo 'commands={"python scripts/validate_repository.py":"${{ steps.repo_validation.outcome }}","python scripts/drift_check.py":"${{ steps.drift_check.outcome }}"}' >> "$GITHUB_OUTPUT"
+
+  eval:
+    runs-on: ubuntu-latest
+    outputs:
+      commands: ${{ steps.command_evidence.outputs.commands }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - id: eval_replay
+        run: python scripts/eval_suite.py --replay
+      - name: Publish executed command set
+        id: command_evidence
+        if: ${{ always() }}
+        run: >-
+          echo 'commands={"python scripts/eval_suite.py --replay":"${{ steps.eval_replay.outcome }}"}' >> "$GITHUB_OUTPUT"
 
   measurability:
+    needs: [node, rust, python, eval, nats-events, integration]
+    if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Verify generated roadmap
+      - name: Collect CI results
+        env:
+          CI_JOB_RESULTS: ${{ toJSON(needs) }}
+          CI_RUN_ID: ${{ github.run_id }}
+          CI_COMMIT: ${{ github.sha }}
+          CI_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: >-
+          python scripts/ci_results.py
+          --needs-json "$CI_JOB_RESULTS"
+          --run-id "$CI_RUN_ID"
+          --commit "$CI_COMMIT"
+          --run-url "$CI_RUN_URL"
+          --output ci-results.json
+      - name: Guard committed roadmap
         run: python scripts/roadmap_status.py --check --no-run-commands
-      - name: Validate draft eval contracts in provider-free replay mode
-        run: python scripts/eval_suite.py --replay
+      - name: Generate evidence-backed roadmap
+        run: >-
+          python scripts/roadmap_status.py
+          --ci-results ci-results.json
+          --no-run-commands
       - name: Upload computed roadmap
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: computed-roadmap
-          path: docs/ROADMAP.md
+          path: |
+            docs/ROADMAP.md
+            ci-results.json
 
   nats-events:
     runs-on: ubuntu-latest
@@ -106,6 +172,8 @@ jobs:
 
   integration:
     runs-on: ubuntu-latest
+    outputs:
+      commands: ${{ steps.command_evidence.outputs.commands }}
     services:
       postgres:
         image: postgres:17-alpine
@@ -141,14 +209,26 @@ jobs:
           psql -h localhost -U kagent -d kagent -f migrations/001_initial_schema.sql
           psql -h localhost -U kagent -d kagent -f migrations/002_auth.sql
           psql -h localhost -U kagent -d kagent -f migrations/003_audit_immutability.sql
+          psql -h localhost -U kagent -d kagent -f migrations/004_totp_persistence.sql
       - name: Install dependencies
         run: |
           pnpm install --frozen-lockfile=false
           pip install asyncpg pytest
-      - name: Run Integration Tests
+      - name: Validate Compose configuration
+        id: compose_config
+        run: docker compose config -q
+      - name: Run Control Plane Integration Tests
         env:
           DATABASE_URL: postgres://kagent:kagent@localhost:5432/kagent
-        run: |
-          pnpm --filter @kagent/control-plane test
-          python tests/integration/test_pg.py
+        run: pnpm --filter @kagent/control-plane test
+      - name: Run PostgreSQL Integration Tests
+        id: integration_tests
+        env:
+          DATABASE_URL: postgres://kagent:kagent@localhost:5432/kagent
+        run: python tests/integration/test_pg.py
+      - name: Publish executed command set
+        id: command_evidence
+        if: ${{ always() }}
+        run: >-
+          echo 'commands={"docker compose config -q":"${{ steps.compose_config.outcome }}","python tests/integration/test_pg.py":"${{ steps.integration_tests.outcome }}"}' >> "$GITHUB_OUTPUT"
 

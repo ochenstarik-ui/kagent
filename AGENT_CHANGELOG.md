@@ -1,5 +1,39 @@
 # Agent Changelog
 
+## 2026-08-10 — Importable Agent Runtime package
+
+- `services/agent_runtime` is the single canonical source and Python import path; no
+  compatibility directory or import-path workaround is retained.
+- Docker build inputs and capability metadata now resolve to that package.
+- The required Python CI evidence includes `tests/unit/test_runtime.py`. The complete unit
+  directory remains blocked independently by the removed `services.auth` package still
+  imported by `tests/unit/test_totp.py`.
+
+## 2026-08-10 — CI evidence-fed computed roadmap
+
+- The `measurability` job runs after every evidence-producing job and consumes only the
+  in-run `needs` context; it does not query GitHub APIs or require write permissions.
+- Each job publishes the outcome of every canonical registry command it covers. Only a
+  successful step verifies command evidence, so a failed job can preserve earlier passing
+  evidence while a declared but skipped command remains unverified.
+- The uploaded roadmap records the run link and commit for accepted evidence while the
+  committed deterministic roadmap remains protected by the existing manual-edit guard.
+- The forbidden-path drift rule now distinguishes standalone measurability work from a
+  product change that attempts to modify eval or measurability artifacts in the same task.
+
+## 2026-08-10 — Internal service perimeter
+
+- Gateway is the only KAgent HTTP service published by the default Compose file; Control
+  Plane, Reasoning Engine, Agent Runtime, Pipeline, and Observability remain reachable only
+  on the internal Compose network.
+- Gateway routes `/api/observability/*`, preserves upstream route/query semantics, and signs
+  requests with the installation's `KAGENT_SERVICE_SECRET`; Pipeline uses the same header for
+  Runtime calls.
+- Agent Runtime and Pipeline reject non-health requests with `401` unless the shared secret
+  matches in constant time. Health probes remain unauthenticated.
+- This is a bootstrap control, not a service identity system; mTLS and scoped identities
+  remain deferred.
+
 ## 2026-08-10 — TOTP second factor in Control Plane
 
 - TOTP is implemented beside the existing TypeScript session and password flow; the dead

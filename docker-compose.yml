@@ -63,11 +63,15 @@ services:
       KAGENT_GATEWAY_PORT: "8080"
       CONTROL_PLANE_URL: "http://control-plane:8100"
       REASONING_ENGINE_URL: "http://reasoning-engine:8200"
+      OBSERVABILITY_URL: "http://observability:8500"
+      KAGENT_SERVICE_SECRET: ${KAGENT_SERVICE_SECRET:-}
       RUST_LOG: ${RUST_LOG:-info}
     depends_on:
       control-plane:
         condition: service_healthy
       reasoning-engine:
+        condition: service_healthy
+      observability:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health/live"]
@@ -79,8 +83,6 @@ services:
     build:
       context: .
       dockerfile: services/control-plane/Dockerfile
-    ports:
-      - "${CONTROL_PLANE_PORT:-8100}:8100"
     environment:
       CONTROL_PLANE_PORT: "8100"
       CONTROL_PLANE_HOST: "0.0.0.0"
@@ -99,8 +101,6 @@ services:
     build:
       context: .
       dockerfile: services/reasoning-engine/Dockerfile
-    ports:
-      - "${REASONING_PORT:-8200}:8200"
     environment:
       OPENCODE_GO_ENDPOINT: ${OPENCODE_GO_ENDPOINT:-http://localhost:20127}
       OPENCODE_GO_API_KEY: ${OPENCODE_GO_API_KEY:-}
@@ -115,9 +115,9 @@ services:
   agent-runtime:
     build:
       context: .
-      dockerfile: services/agent-runtime/Dockerfile
-    ports:
-      - "${RUNTIME_PORT:-8300}:8300"
+      dockerfile: services/agent_runtime/Dockerfile
+    environment:
+      KAGENT_SERVICE_SECRET: ${KAGENT_SERVICE_SECRET:-}
     volumes:
       - agent-workspaces:/tmp/kagent-workspaces
     healthcheck:
@@ -130,12 +130,11 @@ services:
     build:
       context: .
       dockerfile: services/pipeline/Dockerfile
-    ports:
-      - "${PIPELINE_PORT:-8400}:8400"
     environment:
       RUNTIME_URL: "http://agent-runtime:8300"
       REASONING_URL: "http://reasoning-engine:8200"
       NATS_URL: "nats://nats:4222"
+      KAGENT_SERVICE_SECRET: ${KAGENT_SERVICE_SECRET:-}
     depends_on:
       agent-runtime:
         condition: service_healthy
@@ -153,8 +152,6 @@ services:
     build:
       context: .
       dockerfile: services/observability/Dockerfile
-    ports:
-      - "${OBSERVABILITY_PORT:-8500}:8500"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8500/health/live')"]
       interval: 10s

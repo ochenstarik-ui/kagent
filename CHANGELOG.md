@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### Changed
+- Refactored TOTP authentication to separate unit-testable policy from PostgreSQL persistence adapter, fixing cross-instance replay issues and atomic one-time challenges.
+
 ### Added
 
 - Интеграция Pipeline с Reasoning Engine (P2): использование моделей для планирования и выполнения фаз `DEVELOP` и `REPAIR`, с подсчетом стоимости/токенов и строгими ограничениями по рабочим путям.
@@ -38,6 +41,8 @@
 
 ### Changed
 
+- Python-пакет Agent Runtime перенесён в импортируемый путь `services/agent_runtime`; Docker Compose, capability registry и обязательная Python CI-проверка используют тот же путь.
+- Внутренние сервисы больше не публикуют HTTP-порты на хост; Gateway проксирует observability, а вызывающие действия runtime и pipeline требуют общий служебный секрет.
 - Полное ТЗ приведено к разработке с чистого листа без этапа миграции legacy-кода.
 - Definition of Done расширена проверками `test-diff-policy` и `mutation-check` и лимитами `unapproved_test_modifications` и `minimum_mutation_score`.
 - В roadmap добавлено предупреждение, что статусы этапов 0.1–0.8 проставлены вручную и не подтверждены доказательствами выполнения.
@@ -48,6 +53,7 @@
 
 ### Fixed
 
+- Результаты и фактически выполненные команды job'ов CI теперь подаются в вычисляемый roadmap; подтверждённые возможности содержат ссылку на прогон и commit, а частично подтверждённые перечисляют недостающие доказательства.
 - Клиент событий теперь создаёт отсутствующий поток перед публикацией и durable-подпиской; недоступность брокера журналируется и не прерывает выполнение шага pipeline.
 - Ошибка компиляции в `get_request_id`.
 - Падение control-plane при старте из-за незаявленной зависимости логгера.

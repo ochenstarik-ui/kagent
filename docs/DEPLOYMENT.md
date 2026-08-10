@@ -13,7 +13,7 @@
 git clone https://github.com/ochenstarik-ui/kagent.git
 cd kagent
 cp .env.example .env
-# EDIT .env: change all passwords and JWT_SECRET!
+# EDIT .env: change all passwords, JWT_SECRET, and KAGENT_SERVICE_SECRET!
 docker compose up -d
 ```
 
@@ -21,9 +21,9 @@ Verify:
 
 ```bash
 curl http://localhost:8080/health/live        # Gateway
-curl http://localhost:8100/health/live        # Control Plane
-curl http://localhost:8200/health/live        # Reasoning Engine
-curl http://localhost:8500/v1/health          # Dashboard aggregator
+curl http://localhost:8080/api/control-plane/health/live
+curl http://localhost:8080/api/reasoning/health/live
+curl http://localhost:8080/api/observability/v1/health
 ```
 
 ## 3. Environment Variables
@@ -32,10 +32,14 @@ curl http://localhost:8500/v1/health          # Dashboard aggregator
 |----------|---------|----------|
 | `POSTGRES_PASSWORD` | `change-me-locally` | **CHANGE** |
 | `JWT_SECRET` | `dev-secret-...` | **CHANGE** (min 32 chars) |
+| `KAGENT_SERVICE_SECRET` | `change-me-...` | **CHANGE** (unique per installation) |
 | `S3_SECRET_KEY` | `change-me-locally` | **CHANGE** |
 | `OPENCODE_GO_API_KEY` | — | Optional |
 | `XAI_API_KEY` | — | Optional |
 | `OPENAI_API_KEY` | — | Optional |
+
+Compose has no built-in fallback for `KAGENT_SERVICE_SECRET`. If it is unset or empty,
+Gateway refuses to start and protected Runtime/Pipeline requests fail closed with `401`.
 
 ## 4. Service Architecture
 
@@ -95,9 +99,9 @@ docker compose up -d
 
 ## 7. Monitoring
 
-- Prometheus metrics: `GET /v1/metrics` on Observability (:8500)
-- Health dashboard: `GET /v1/health` on Observability (:8500)
-- Service health: each service has `/health/live`
+- Prometheus metrics: `GET /api/observability/v1/metrics` through Gateway (:8080)
+- Health dashboard: `GET /api/observability/v1/health` through Gateway (:8080)
+- Service health: each service has `/health/live` on the internal Compose network
 
 Prometheus scrape config:
 
@@ -105,15 +109,16 @@ Prometheus scrape config:
 scrape_configs:
   - job_name: kagent
     static_configs:
-      - targets: ['localhost:8500']
-    metrics_path: /v1/metrics
+      - targets: ['localhost:8080']
+    metrics_path: /api/observability/v1/metrics
 ```
 
 ## 8. Security Checklist
 
 - [ ] Change all default passwords in .env
 - [ ] Set JWT_SECRET to 64+ random characters: `openssl rand -hex 32`
-- [ ] Configure firewall: only expose Gateway port 8080
+- [ ] Set KAGENT_SERVICE_SECRET to a unique random value: `openssl rand -hex 32`
+- [ ] Confirm Compose publishes only Gateway port 8080; internal services stay on the Compose network
 - [ ] Enable TLS with reverse proxy (nginx/caddy)
 - [ ] Set up regular database backups
 - [ ] Review threat model: `docs/THREAT_MODEL.md`

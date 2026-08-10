@@ -86,10 +86,10 @@
       "id": "runtime.tools",
       "stage": "0.4",
       "name": "Agent runtime with sandboxed tools",
-      "module": "services/agent-runtime/src/runtime.py",
-      "owner": "services/agent-runtime",
+      "module": "services/agent_runtime/src/runtime.py",
+      "owner": "services/agent_runtime",
       "evidence": ["unit_tests", "python_ci"],
-      "artifacts": ["services/agent-runtime/src/runtime.py", "tests/unit/test_runtime.py"]
+      "artifacts": ["services/agent_runtime/src/runtime.py", "tests/unit/test_runtime.py"]
     },
     {
       "id": "pipeline.cycle",
@@ -323,7 +323,7 @@
     "services/control-plane/src/main.ts",
     "services/reasoning-engine/main.py",
     "services/reasoning-engine/src/server.py",
-    "services/agent-runtime/src/runtime.py",
+    "services/agent_runtime/src/runtime.py",
     "services/pipeline/src/pipeline.py",
     "services/observability/src/metrics.py",
     "services/orchestrator/src/orchestrator.py",
