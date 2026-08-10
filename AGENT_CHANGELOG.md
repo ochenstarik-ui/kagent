@@ -22,6 +22,16 @@
 - Pipeline and orchestrator align on maintained `nats-py` 2.15.0 under the Apache-2.0
   license; this task does not add orchestrator event integration.
 
+## 2026-08-10 — Reasoning Engine contract publication
+
+### Implemented
+
+- Exported the existing Reasoning Engine types from the public `@kagent/contracts` entry
+  point as a backward-compatible contract extension.
+- Added a source-level compatibility test that compares request fields and routing enum
+  values with the Python Reasoning Engine declarations.
+- Removed the resolved unreachable-module exception for the reasoning contract.
+
 ## 2026-07-24 — Foundation Bootstrap 0.1.0-dev
 
 ### Source of truth
