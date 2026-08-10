@@ -4,7 +4,14 @@
     "jsx": "preserve",
     "noEmit": true,
     "incremental": true,
-    "plugins": [{ "name": "next" }]
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "allowJs": true,
+    "esModuleInterop": true,
+    "isolatedModules": true
   },
   "include": [
     "next-env.d.ts",
@@ -12,5 +19,7 @@
     "app/**/*.ts",
     "app/**/*.tsx"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules"
+  ]
 }

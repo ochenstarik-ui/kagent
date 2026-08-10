@@ -47,6 +47,7 @@ Statuses:
 | 0026 | Real Model Execution and Testing | proposed |
 | 0027 | Pipeline Uses Reasoning Engine | proposed |
 | 0028 | Git Contour and Task Contract | proposed |
+| 0029 | TOTP recovery codes | proposed |
 ADR-0004 through ADR-0016 are specified in sections 35–41 of `docs/KAGENT_FULL_PRODUCT_SPEC.md`.
 ADR-0017 through ADR-0020 are specified in sections 42–51. They move to `accepted` when the project owner approves them.
 

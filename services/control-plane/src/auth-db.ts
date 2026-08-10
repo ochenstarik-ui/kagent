@@ -2,6 +2,7 @@
 
 import { Pool } from "pg";
 import { nanoid } from "nanoid";
+import { createHash } from "node:crypto";
 import {
   hashPassword as hashPw,
   verifyPassword,
@@ -11,7 +12,7 @@ import {
   type AuthTokens,
   type LoginChallenge,
 } from "./auth.js";
-import { TotpPolicy, InMemoryTotpStorage, PostgresTotpStorage } from "./totp.js";
+import { TotpPolicy, InMemoryTotpStorage, PostgresTotpStorage, generateRecoveryCodes as genRecoveryCodes } from "./totp.js";
 
 export class AuthStore {
   private totpPolicy: TotpPolicy;
@@ -174,7 +175,27 @@ export class AuthStore {
 
   async disableTotp(accountId: string): Promise<void> {
     await this.pool.query("UPDATE accounts SET totp_enabled = false, totp_secret = NULL WHERE id = $1", [accountId]);
+    await this.pool.query("DELETE FROM recovery_codes WHERE account_id = $1", [accountId]);
     await this.totpPolicy.resetLastStep(accountId);
+  }
+
+  async generateRecoveryCodes(accountId: string): Promise<string[]> {
+    const { codes, hashes } = genRecoveryCodes();
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("DELETE FROM recovery_codes WHERE account_id = $1", [accountId]);
+      for (const hash of hashes) {
+        await client.query("INSERT INTO recovery_codes (account_id, code_hash) VALUES ($1, $2)", [accountId, hash]);
+      }
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+    return codes;
   }
 
   async consumeTotpCode(accountId: string, secret: string, code: string): Promise<boolean> {
@@ -199,7 +220,16 @@ export class AuthStore {
       return { error: "Invalid credentials" };
     }
 
-    if (!(await this.totpPolicy.consumeTotpCode(account.id, account.totp_secret, code))) {
+    let valid = false;
+    if (code.length === 6) {
+      valid = await this.totpPolicy.consumeTotpCode(account.id, account.totp_secret, code);
+    } else {
+      const codeHash = createHash("sha256").update(code).digest("hex");
+      const delRes = await this.pool.query("DELETE FROM recovery_codes WHERE account_id = $1 AND code_hash = $2 RETURNING 1", [account.id, codeHash]);
+      valid = delRes.rowCount !== null && delRes.rowCount > 0;
+    }
+
+    if (!valid) {
       await this.totpPolicy.failChallenge(challengeId);
       return { error: "Invalid credentials" };
     }
