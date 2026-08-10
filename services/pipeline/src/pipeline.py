@@ -338,6 +338,8 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 
 app = FastAPI(title="KAgent Pipeline", version="0.5.0")
+from services.shared.service_auth import ServiceAuthMiddleware
+app.add_middleware(ServiceAuthMiddleware)
 engine = PipelineEngine()
 
 

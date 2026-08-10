@@ -8,6 +8,9 @@
 
 ### Added
 
+- Периметр внутренних сервисов закрыт: reasoning-engine, agent-runtime, pipeline и observability не публикуют порты на хост.
+- Служебная аутентификация (SERVICE_SECRET) обязательна для agent-runtime и pipeline; /health/* доступны без секрета.
+- Gateway проксирует /api/observability и инжектирует служебный секрет во все внутренние вызовы.
 - Общая Python-библиотека событий с идемпотентным созданием потоков NATS JetStream, ограниченными попытками переподключения и интеграционным CI-тестом на настоящем брокере.
 - Публикация `task.started`, `agent.started`, `agent.completed`, `artifact.created` и `task.failed` из Verified Coding Pipeline с версионированным конвертом событий.
 - Контракт Reasoning Engine опубликован через публичную поверхность `@kagent/contracts`; добавлена проверка соответствия полей запроса и допустимых значений TypeScript-контракта Python-сервису.

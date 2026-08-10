@@ -1,0 +1,16 @@
+# Debug override — exposes internal service ports for local development.
+# Copy to docker-compose.override.yml to activate.
+# WARNING: Do not use in production.
+services:
+  reasoning-engine:
+    ports:
+      - "127.0.0.1:${REASONING_PORT:-8200}:8200"
+  agent-runtime:
+    ports:
+      - "127.0.0.1:${RUNTIME_PORT:-8300}:8300"
+  pipeline:
+    ports:
+      - "127.0.0.1:${PIPELINE_PORT:-8400}:8400"
+  observability:
+    ports:
+      - "127.0.0.1:${OBSERVABILITY_PORT:-8500}:8500"

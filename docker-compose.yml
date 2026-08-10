@@ -63,6 +63,8 @@ services:
       KAGENT_GATEWAY_PORT: "8080"
       CONTROL_PLANE_URL: "http://control-plane:8100"
       REASONING_ENGINE_URL: "http://reasoning-engine:8200"
+      SERVICE_SECRET: ${SERVICE_SECRET:-}
+      OBSERVABILITY_URL: "http://observability:8500"
       RUST_LOG: ${RUST_LOG:-info}
     depends_on:
       control-plane:
@@ -99,8 +101,6 @@ services:
     build:
       context: .
       dockerfile: services/reasoning-engine/Dockerfile
-    ports:
-      - "${REASONING_PORT:-8200}:8200"
     environment:
       OPENCODE_GO_ENDPOINT: ${OPENCODE_GO_ENDPOINT:-http://localhost:20127}
       OPENCODE_GO_API_KEY: ${OPENCODE_GO_API_KEY:-}
@@ -116,8 +116,8 @@ services:
     build:
       context: .
       dockerfile: services/agent_runtime/Dockerfile
-    ports:
-      - "${RUNTIME_PORT:-8300}:8300"
+    environment:
+      SERVICE_SECRET: ${SERVICE_SECRET:-}
     volumes:
       - agent-workspaces:/tmp/kagent-workspaces
     healthcheck:
@@ -130,9 +130,8 @@ services:
     build:
       context: .
       dockerfile: services/pipeline/Dockerfile
-    ports:
-      - "${PIPELINE_PORT:-8400}:8400"
     environment:
+      SERVICE_SECRET: ${SERVICE_SECRET:-}
       RUNTIME_URL: "http://agent-runtime:8300"
       REASONING_URL: "http://reasoning-engine:8200"
       NATS_URL: "nats://nats:4222"
@@ -153,8 +152,6 @@ services:
     build:
       context: .
       dockerfile: services/observability/Dockerfile
-    ports:
-      - "${OBSERVABILITY_PORT:-8500}:8500"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8500/health/live')"]
       interval: 10s

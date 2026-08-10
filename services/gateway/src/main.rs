@@ -74,6 +74,8 @@ struct AppState {
     client: Client<hyper_util::client::legacy::connect::HttpConnector, axum::body::Body>,
     control_plane_url: String,
     reasoning_engine_url: String,
+    observability_url: String,
+    service_secret: String,
     request_limit_bytes: usize,
 }
 
@@ -121,6 +123,12 @@ async fn proxy(
             state.reasoning_engine_url,
             path.replacen("/api/reasoning", "", 1)
         )
+    } else if path.starts_with("/api/observability") {
+        format!(
+            "{}{}",
+            state.observability_url,
+            path.replacen("/api/observability", "", 1)
+        )
     } else if path.starts_with("/health") {
         return Ok((
             StatusCode::OK,
@@ -154,6 +162,7 @@ async fn proxy(
         .method(method)
         .uri(uri)
         .header("x-request-id", &request_id)
+        .header("x-service-secret", &state.service_secret)
         .header(
             "x-forwarded-for",
             headers
@@ -258,6 +267,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         env::var("CONTROL_PLANE_URL").unwrap_or_else(|_| "http://localhost:8100".to_owned());
     let reasoning_engine_url =
         env::var("REASONING_ENGINE_URL").unwrap_or_else(|_| "http://localhost:8200".to_owned());
+    let observability_url =
+        env::var("OBSERVABILITY_URL").unwrap_or_else(|_| "http://localhost:8500".to_owned());
+    let service_secret =
+        env::var("SERVICE_SECRET").unwrap_or_else(|_| String::new());
     let request_limit_bytes: usize = env::var("GATEWAY_REQUEST_LIMIT_BYTES")
         .unwrap_or_else(|_| "10485760".to_owned())
         .parse()
@@ -270,6 +283,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .build_http(),
         control_plane_url: control_plane_url.trim_end_matches('/').to_owned(),
         reasoning_engine_url: reasoning_engine_url.trim_end_matches('/').to_owned(),
+        observability_url: observability_url.trim_end_matches('/').to_owned(),
+        service_secret,
         request_limit_bytes,
     });
 
@@ -320,7 +335,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_state(state.clone());
 
     let listener = TcpListener::bind(address).await?;
-    info!(%address, control_plane_url = %control_plane_url, reasoning_engine_url = %reasoning_engine_url, "gateway_started");
+    info!(%address, control_plane_url = %control_plane_url, reasoning_engine_url = %reasoning_engine_url, observability_url = %observability_url, "gateway_started");
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;

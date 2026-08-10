@@ -113,7 +113,8 @@ scrape_configs:
 
 - [ ] Change all default passwords in .env
 - [ ] Set JWT_SECRET to 64+ random characters: `openssl rand -hex 32`
-- [ ] Configure firewall: only expose Gateway port 8080
+- [ ] Set SERVICE_SECRET to a secure random value
+- [ ] Configure firewall: only expose Gateway port 8080 (block 8100)
 - [ ] Enable TLS with reverse proxy (nginx/caddy)
 - [ ] Set up regular database backups
 - [ ] Review threat model: `docs/THREAT_MODEL.md`

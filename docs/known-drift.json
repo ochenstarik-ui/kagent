@@ -1,4 +1,11 @@
 {
   "version": 1,
-  "entries": []
+  "entries": [
+    {
+      "path": "services/shared/__init__.py",
+      "reason": "Empty package init file, drift_check does not resolve python package inits",
+      "expires": "2030-01-01",
+      "follow_up_task": "None"
+    }
+  ]
 }
