@@ -77,10 +77,10 @@
       "id": "auth.totp",
       "stage": "0.8",
       "name": "TOTP two-factor authentication",
-      "module": "services/auth/src/totp.py",
-      "owner": "services/auth",
-      "evidence": ["unit_tests", "python_ci"],
-      "artifacts": ["services/auth/src/totp.py", "tests/unit/test_totp.py"]
+      "module": "services/control-plane/src/totp.ts",
+      "owner": "services/control-plane",
+      "evidence": ["unit_tests", "node_ci"],
+      "artifacts": ["services/control-plane/src/totp.ts", "services/control-plane/src/totp.test.ts"]
     },
     {
       "id": "runtime.tools",
@@ -262,7 +262,11 @@
       "POST /v1/auth/logout",
       "POST /v1/auth/logout-all",
       "GET /v1/auth/whoami",
-      "GET /v1/auth/sessions"
+      "GET /v1/auth/sessions",
+      "POST /v1/auth/totp/enroll",
+      "POST /v1/auth/totp/activate",
+      "POST /v1/auth/totp/disable",
+      "POST /v1/auth/login/totp"
     ],
     "reasoning-engine": [
       "GET /health/live",
@@ -307,11 +311,6 @@
       "POST /v1/work/complete",
       "POST /v1/handoff",
       "GET /v1/stats"
-    ],
-    "auth": [
-      "POST /v1/auth/totp/setup",
-      "POST /v1/auth/totp/verify",
-      "POST /v1/auth/totp/validate"
     ],
     "nats": [
       "publish",
