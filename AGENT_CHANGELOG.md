@@ -1,5 +1,12 @@
 # Agent Changelog
 
+## 2026-08-11 — Unprivileged Runtime Sandbox
+
+- **Sandbox Implementation:** Agent Runtime uses `bubblewrap` to securely isolate capabilities.
+- **Fail-Fast:** Execution fails if `bubblewrap` is missing; no silent degradation.
+- **Isolation:** Mounts are strictly constrained to the workspace; the process runs unprivileged with no network or IPC access, and secrets are dropped from the environment.
+- **Architecture Artifact:** `docs/adr/0030-unprivileged-runtime-sandbox.md`.
+
 ## 2026-08-10 — Decision review: statuses, scope and scheduling
 
 The project owner delegated the outstanding decisions with a single instruction: make the

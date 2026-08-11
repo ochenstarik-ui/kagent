@@ -4,21 +4,16 @@ v0.4: Tool contracts, streaming events, sandbox execution, artifact upload.
 """
 
 import asyncio
-import hashlib
-import json
 import os
 import secrets
-import signal
-import subprocess
-import sys
 import tempfile
-import time
+import typing
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Optional
-
+from typing import Any
 
 # ═══════════════════════════════════════════════════════════════════════
 # Tool Contracts
@@ -63,7 +58,7 @@ class FileReadTool(ToolContract):
         try:
             content = path.read_text(encoding="utf-8")
             return {"content": content, "size": len(content)}
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return {"error": str(e)}
 
 
@@ -87,7 +82,7 @@ class FileWriteTool(ToolContract):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(params["content"], encoding="utf-8")
             return {"written": len(params["content"]), "path": str(path.relative_to(workspace))}
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return {"error": str(e)}
 
 
@@ -105,12 +100,35 @@ class ShellTool(ToolContract):
     
     async def execute(self, params: dict[str, Any], workspace: Path) -> dict[str, Any]:
         cwd = workspace / params.get("cwd", ".")
+        bwrap_path = "/usr/bin/bwrap"
+        if not os.path.exists(bwrap_path):
+            return {"error": "Isolation unavailable", "exit_code": -1}
+            
+        cmd = [
+            bwrap_path,
+            "--unshare-all",
+            "--ro-bind", "/usr", "/usr",
+            "--symlink", "usr/bin", "/bin",
+            "--symlink", "usr/sbin", "/sbin",
+            "--symlink", "usr/lib", "/lib",
+            "--symlink", "usr/lib64", "/lib64",
+            "--ro-bind-try", "/etc/alternatives", "/etc/alternatives",
+            "--ro-bind-try", "/etc/resolv.conf", "/etc/resolv.conf",
+            "--proc", "/proc",
+            "--dev", "/dev",
+            "--tmpfs", "/tmp",
+            "--bind", str(workspace.resolve()), str(workspace.resolve()),
+            "--chdir", str(cwd.resolve()),
+            "--",
+            "sh", "-c", params["command"]
+        ]
+        
         try:
-            proc = await asyncio.create_subprocess_shell(
-                params["command"],
-                cwd=cwd,
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env={}  # No secrets in environment
             )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
             return {
@@ -120,7 +138,7 @@ class ShellTool(ToolContract):
             }
         except asyncio.TimeoutError:
             return {"error": "Command timed out (60s)", "exit_code": -1}
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return {"error": str(e), "exit_code": -1}
 
 
@@ -153,20 +171,20 @@ class AgentContext:
     status: AgentStatus = AgentStatus.IDLE
     events: list[ExecutionEvent] = field(default_factory=list)
     artifacts: list[Path] = field(default_factory=list)
-    started_at: Optional[str] = None
-    completed_at: Optional[str] = None
+    started_at: str | None = None
+    completed_at: str | None = None
 
 
 class AgentRuntime:
     """Isolated agent execution environment."""
     
-    DEFAULT_TOOLS = [FileReadTool(), FileWriteTool(), ShellTool()]
+    DEFAULT_TOOLS: typing.ClassVar[list[ToolContract]] = [FileReadTool(), FileWriteTool(), ShellTool()]
     
-    def __init__(self, workspace_root: Optional[Path] = None):
+    def __init__(self, workspace_root: Path | None = None):
         self.workspace_root = workspace_root or Path(tempfile.mkdtemp(prefix="kagent-"))
         self._contexts: dict[str, AgentContext] = {}
     
-    async def create_context(self, task_id: str, project_id: str, tools: Optional[list[ToolContract]] = None) -> AgentContext:
+    async def create_context(self, task_id: str, project_id: str, tools: list[ToolContract] | None = None) -> AgentContext:
         workspace = self.workspace_root / project_id / task_id
         workspace.mkdir(parents=True, exist_ok=True)
         
@@ -180,6 +198,9 @@ class AgentRuntime:
         return ctx
     
     async def execute_tool(self, task_id: str, tool_name: str, params: dict[str, Any]) -> dict[str, Any]:
+        if not os.path.exists("/usr/bin/bwrap"):
+            return {"error": "Isolation unavailable: bubblewrap not found"}
+            
         ctx = self._contexts.get(task_id)
         if not ctx:
             return {"error": f"Context not found: {task_id}"}
@@ -225,7 +246,7 @@ class AgentRuntime:
         self,
         task_id: str,
         steps: list[dict[str, Any]],  # [{tool, params}, ...]
-        on_event: Optional[Callable[[ExecutionEvent], None]] = None,
+        on_event: Callable[[ExecutionEvent], None] | None = None,
     ) -> AgentContext:
         ctx = self._contexts.get(task_id)
         if not ctx:
@@ -249,7 +270,7 @@ class AgentRuntime:
                     return ctx
             
             ctx.status = AgentStatus.COMPLETED
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001  # noqa: BLE001
             ctx.status = AgentStatus.FAILED
             ctx.events.append(ExecutionEvent(type="error", data={"error": str(e)}))
         finally:
@@ -261,7 +282,7 @@ class AgentRuntime:
         ctx = self._contexts.get(task_id)
         return ctx.events if ctx else []
     
-    def get_status(self, task_id: str) -> Optional[AgentStatus]:
+    def get_status(self, task_id: str) -> AgentStatus | None:
         ctx = self._contexts.get(task_id)
         return ctx.status if ctx else None
     
