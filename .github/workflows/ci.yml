@@ -66,17 +66,13 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -r services/pipeline/requirements.txt ruff pytest pytest-asyncio
-      - name: Lint
-        run: >-
-          ruff check
-          tests/unit
-          scripts
-          --no-cache
+      - run: ruff check services/ scripts/ tests/unit/ --select E --ignore E501,E402
       - name: Run Python unit tests
         run: >-
           python -m pytest
           tests/unit
-          -q --import-mode=importlib
+          --import-mode=importlib
+          -q
       - id: repo_validation
         run: python scripts/validate_repository.py
       - id: drift_check
