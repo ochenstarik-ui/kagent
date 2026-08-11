@@ -1,0 +1,10 @@
+{
+  "description": "Drop caller-provided headers while retaining the new security header.",
+  "operations": [
+    {
+      "kind": "write",
+      "path": "web.py",
+      "content": "def response(path: str, headers: dict[str, str] | None = None) -> tuple[int, str, dict[str, str]]:\n    response_headers = {\"X-Content-Type-Options\": \"nosniff\"}\n    if path == \"/\":\n        return 200, \"home\", response_headers\n    return 404, \"not found\", response_headers\n"
+    }
+  ]
+}

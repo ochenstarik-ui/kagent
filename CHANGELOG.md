@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Changed
+- The replay evaluation suite now uses three runnable, deterministic stdlib repository snapshots with tracked response cassettes, immutable acceptance verifiers, empty-diff proofs, and adjacent-behavior mutation proofs; reports include zero-provider replay counters and recorded per-case cost/repair metrics.
 - Verified capability status is now generated deterministically from tracked successful `main` push evidence; automation updates the evidence and roadmap through a pull request rather than pushing to `main`.
 - Python CI now lints all Python test scopes and runs every unit test directory instead of a named-file allowlist.
 - Refactored TOTP authentication to separate unit-testable policy from PostgreSQL persistence adapter, fixing cross-instance replay issues and atomic one-time challenges.

@@ -1,0 +1,29 @@
+{
+  "cassette_version": 1,
+  "lookup_key": {
+    "agent_role": "developer",
+    "prompt_hash": "sha256:f9e2acb1d3803136719df62dad184a66d04ed625bd34b53b93c74fbe75f2054f"
+  },
+  "request": {
+    "task": "Add GET /health/ready returning status ready and a non-negative integer uptime. Add an acceptance test; preserve existing routes."
+  },
+  "response": {
+    "stop_reason": "completed",
+    "operations": [
+      {
+        "kind": "write",
+        "path": "app.py",
+        "content": "from time import monotonic\n\n_STARTED = monotonic()\n\n\ndef dispatch(method: str, path: str) -> tuple[int, dict[str, object]]:\n    if method == \"GET\" and path == \"/health/live\":\n        return 200, {\"status\": \"live\"}\n    if method == \"GET\" and path == \"/health/ready\":\n        return 200, {\"status\": \"ready\", \"uptime\": int(monotonic() - _STARTED)}\n    return 404, {\"error\": \"not found\"}\n"
+      },
+      {
+        "kind": "write",
+        "path": "tests/test_ready.py",
+        "content": "import unittest\n\nfrom app import dispatch\n\n\nclass ReadyEndpointTests(unittest.TestCase):\n    def test_ready_endpoint_reports_uptime(self) -> None:\n        status, body = dispatch(\"GET\", \"/health/ready\")\n        self.assertEqual(status, 200)\n        self.assertEqual(body[\"status\"], \"ready\")\n        self.assertIsInstance(body[\"uptime\"], int)\n        self.assertGreaterEqual(body[\"uptime\"], 0)\n\n\nif __name__ == \"__main__\":\n    unittest.main()\n"
+      }
+    ]
+  },
+  "metrics": {
+    "repair_cycles": 0,
+    "cost_usd": 0.0068
+  }
+}

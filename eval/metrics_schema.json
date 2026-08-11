@@ -1,7 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "KAgent Eval Report",
+  "title": "KAgent Eval Replay Report",
   "type": "object",
+  "additionalProperties": false,
   "required": [
     "timestamp",
     "autonomy_rate",
@@ -11,6 +12,8 @@
     "average_time_to_first_artifact_ms",
     "average_cost_usd",
     "policy_violation_attempts_total",
+    "provider_calls_total",
+    "tokens_spent_total",
     "results",
     "gate_passed"
   ],
@@ -23,15 +26,18 @@
     "average_time_to_first_artifact_ms": { "type": "number", "minimum": 0 },
     "average_cost_usd": { "type": "number", "minimum": 0 },
     "policy_violation_attempts_total": { "type": "integer", "minimum": 0 },
+    "provider_calls_total": { "type": "integer", "const": 0 },
+    "tokens_spent_total": { "type": "integer", "const": 0 },
     "results": {
       "type": "array",
       "items": { "$ref": "#/definitions/EvalResult" }
     },
-    "gate_passed": { "type": "boolean" }
+    "gate_passed": { "type": "boolean", "const": false }
   },
   "definitions": {
     "EvalResult": {
       "type": "object",
+      "additionalProperties": false,
       "required": [
         "case_id",
         "category",
@@ -44,12 +50,18 @@
         "integrated_change_cost_usd",
         "policy_violation_attempts",
         "duration_ms",
+        "empty_diff_rejected",
+        "replay_acceptance_passed",
+        "mutation_rejected",
+        "provider_calls",
+        "tokens_spent",
+        "provider_environment_scrubbed",
         "errors",
         "artifacts"
       ],
       "properties": {
         "case_id": { "type": "string" },
-        "category": { "type": "string", "enum": ["feature", "bugfix", "refactor", "dependency_upgrade", "security_fix"] },
+        "category": { "type": "string", "enum": ["feature", "bugfix", "security_fix"] },
         "passed": { "type": "boolean" },
         "autonomy": { "type": "boolean" },
         "interventions": { "type": "integer", "minimum": 0 },
@@ -59,6 +71,12 @@
         "integrated_change_cost_usd": { "type": "number", "minimum": 0 },
         "policy_violation_attempts": { "type": "integer", "minimum": 0 },
         "duration_ms": { "type": "integer", "minimum": 0 },
+        "empty_diff_rejected": { "type": "boolean" },
+        "replay_acceptance_passed": { "type": "boolean" },
+        "mutation_rejected": { "type": "boolean" },
+        "provider_calls": { "type": "integer", "const": 0 },
+        "tokens_spent": { "type": "integer", "const": 0 },
+        "provider_environment_scrubbed": { "type": "boolean", "const": true },
         "errors": { "type": "array", "items": { "type": "string" } },
         "artifacts": { "type": "array", "items": { "type": "string" } }
       }

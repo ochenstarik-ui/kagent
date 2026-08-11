@@ -1,0 +1,10 @@
+{
+  "description": "Replace per-client counters with one global counter; primary limit still works but client independence breaks.",
+  "operations": [
+    {
+      "kind": "write",
+      "path": "limiter.py",
+      "content": "class RateLimiter:\n    def __init__(self, limit: int = 2) -> None:\n        self.limit = limit\n        self._count = 0\n\n    def allow(self, client: str) -> bool:\n        if self._count >= self.limit:\n            return False\n        self._count += 1\n        return True\n"
+    }
+  ]
+}
