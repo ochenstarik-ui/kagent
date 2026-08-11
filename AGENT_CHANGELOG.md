@@ -1,5 +1,11 @@
 # Agent Changelog
 
+## 2026-08-12 — Deployment smoke evidence
+
+- Added a full-Compose CI smoke that waits on declared healthchecks and exercises registration, authentication, project/task persistence, audit, and observability only through Gateway.
+- Added active and rendered-configuration checks that fail when an internal KAgent service publishes a host port, plus a direct Runtime fail-closed check from the Compose network.
+- Recorded the PostgreSQL initdb limitation on non-empty volumes as deployment evidence without introducing an implicit migration mechanism.
+
 ## 2026-08-12 — Tracked verified capability status
 
 - Scheme B stores accepted `main` push evidence in `docs/ci-results.json`, making deterministic roadmap generation visibly retain verified state.
