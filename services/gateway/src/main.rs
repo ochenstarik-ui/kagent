@@ -359,7 +359,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if service_secret.is_empty() {
         return Err("KAGENT_SERVICE_SECRET must not be empty".into());
     }
-    let web_url = env::var("WEB_URL").ok().map(|s| s.trim_end_matches('/').to_owned());
+    let web_url = env::var("WEB_URL")
+        .ok()
+        .map(|s| s.trim_end_matches('/').to_owned());
     let request_limit_bytes: usize = env::var("GATEWAY_REQUEST_LIMIT_BYTES")
         .unwrap_or_else(|_| "10485760".to_owned())
         .parse()
