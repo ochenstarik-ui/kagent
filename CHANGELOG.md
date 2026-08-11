@@ -6,8 +6,18 @@
 
 ## [Unreleased]
 
-### Added
+### Changed
+- Refactored TOTP authentication to separate unit-testable policy from PostgreSQL persistence adapter, fixing cross-instance replay issues and atomic one-time challenges.
 
+### Added
+- Agent Runtime unprivileged execution sandbox using bubblewrap (bwrap), enforcing workspace limits, preventing network access, and dropping secrets.
+- Added recovery codes capability for TOTP, including generate and login endpoints, generating 10 hashed 128-bit codes with atomic revocation and secure double-use rejection.
+
+- Исправлено поведение Pipeline и Reasoning Engine: ответы без 2xx считаются hard error без silent fallback (кроме fallback внутри Reasoning Engine, который работает по-прежнему), а failed TEST создает попытку REPAIR с последующим TEST, лимит исчерпания которого требует HUMAN_REQUIRED решения.
+
+- Реализация Git-контура и контракта задачи (P3): изолированные рабочие пространства, атомарные коммиты с метаданными задачи, проверка разрешённых путей, идемпотентное создание Pull Request.
+- Интеграция Pipeline с Reasoning Engine (P2): использование моделей для планирования и выполнения фаз `DEVELOP` и `REPAIR`, с подсчетом стоимости/токенов и строгими ограничениями по рабочим путям.
+- Реализовано фактическое исполнение моделей в Reasoning Engine с отказоустойчивостью (fallback), подсчётом токенов/стоимости, кэшированием решений и поддержкой режимов live/record/replay через кассеты.
 - Общая Python-библиотека событий с идемпотентным созданием потоков NATS JetStream, ограниченными попытками переподключения и интеграционным CI-тестом на настоящем брокере.
 - Публикация `task.started`, `agent.started`, `agent.completed`, `artifact.created` и `task.failed` из Verified Coding Pipeline с версионированным конвертом событий.
 - Контракт Reasoning Engine опубликован через публичную поверхность `@kagent/contracts`; добавлена проверка соответствия полей запроса и допустимых значений TypeScript-контракта Python-сервису.
@@ -15,6 +25,7 @@
 - ADR-0017…ADR-0020 со статусом `proposed`: программная среда как поверхность инструментов, сессия как append-only дерево, приватность как ограничение маршрутизации, версионирование протоколов с согласованием возможностей.
 - Этап 0.10 «Runtime and Distribution» в roadmap с песочницей как предусловием.
 - Поддержка TOTP (двухфакторная аутентификация) реализована в TypeScript в control-plane, удален неиспользуемый Python модуль.
+- GitManager с единым workspace для runtime и Git, path-filtered индексацией (allowed_paths/forbidden_paths), idempotent branch/commit/push через EffectLedger, TaskContract с проверкой лимитов. Интеграционные тесты с локальным bare remote.
 
 - Разделы ТЗ 35–41: воспроизводимость выполнения, целостность верификации и интеграции, экономика выполнения и целостность эффектов, контракт человеческого решения, жизненный цикл контекста, память и границы данных, измеримость прогресса.
 - ADR-0004…ADR-0016 со статусом `proposed`: кассеты и реплей запусков, целостность тестового оракула, двухфазный бюджетный ledger с автостопом, реестр промптов, eval-suite платформы и метрики автономности, merge queue и политика ветвления, ledger внешних эффектов, контракт человеческого решения, жизненный цикл контекста, кэш модельных вызовов, исполняемые уроки, изоляция личного контура, вычисляемый статус этапов.
@@ -49,6 +60,7 @@
 ### Fixed
 
 - Результаты и фактически выполненные команды job'ов CI теперь подаются в вычисляемый roadmap; подтверждённые возможности содержат ссылку на прогон и commit, а частично подтверждённые перечисляют недостающие доказательства.
+- Исправлены синтаксические ошибки импорта (E401) в Reasoning Engine и логика обработки статуса `HUMAN_REQUIRED` при циклах восстановления в Pipeline Engine.
 - Клиент событий теперь создаёт отсутствующий поток перед публикацией и durable-подпиской; недоступность брокера журналируется и не прерывает выполнение шага pipeline.
 - Ошибка компиляции в `get_request_id`.
 - Падение control-plane при старте из-за незаявленной зависимости логгера.

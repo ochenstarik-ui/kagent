@@ -1,4 +1,17 @@
 {
   "version": 1,
-  "entries": []
-}
+  "entries": [
+    {
+      "path": "services/reasoning-engine/conftest.py",
+      "reason": "Test configuration loaded automatically by pytest, not imported directly.",
+      "expires": "2026-12-31",
+      "follow_up_task": "None"
+    },
+    {
+      "path": "apps/web/e2e/dashboard.spec.ts",
+      "reason": "Playwright E2E test loaded by playwright runner, not statically imported.",
+      "expires": "2026-12-31",
+      "follow_up_task": "None"
+    }
+  ]
+}

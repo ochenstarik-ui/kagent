@@ -75,6 +75,7 @@ struct AppState {
     control_plane_url: String,
     reasoning_engine_url: String,
     observability_url: String,
+    web_url: Option<String>,
     service_secret: String,
     request_limit_bytes: usize,
 }
@@ -129,6 +130,7 @@ async fn proxy(
         &state.control_plane_url,
         &state.reasoning_engine_url,
         &state.observability_url,
+        state.web_url.as_deref(),
     )
     .ok_or(StatusCode::NOT_FOUND)?;
 
@@ -206,6 +208,7 @@ fn backend_url(
     control_plane_url: &str,
     reasoning_engine_url: &str,
     observability_url: &str,
+    web_url: Option<&str>,
 ) -> Option<String> {
     [
         ("/api/control-plane", control_plane_url),
@@ -219,6 +222,7 @@ fn backend_url(
                 .then(|| format!("{base_url}{suffix}"))
         })
     })
+    .or_else(|| web_url.map(|base_url| format!("{base_url}{path_and_query}")))
 }
 
 fn backend_url_from_uri(
@@ -226,6 +230,7 @@ fn backend_url_from_uri(
     control_plane_url: &str,
     reasoning_engine_url: &str,
     observability_url: &str,
+    web_url: Option<&str>,
 ) -> Option<String> {
     backend_url(
         uri.path_and_query()
@@ -234,6 +239,7 @@ fn backend_url_from_uri(
         control_plane_url,
         reasoning_engine_url,
         observability_url,
+        web_url,
     )
 }
 
@@ -353,6 +359,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if service_secret.is_empty() {
         return Err("KAGENT_SERVICE_SECRET must not be empty".into());
     }
+    let web_url = env::var("WEB_URL")
+        .ok()
+        .map(|s| s.trim_end_matches('/').to_owned());
     let request_limit_bytes: usize = env::var("GATEWAY_REQUEST_LIMIT_BYTES")
         .unwrap_or_else(|_| "10485760".to_owned())
         .parse()
@@ -366,6 +375,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         control_plane_url: control_plane_url.trim_end_matches('/').to_owned(),
         reasoning_engine_url: reasoning_engine_url.trim_end_matches('/').to_owned(),
         observability_url: observability_url.trim_end_matches('/').to_owned(),
+        web_url,
         service_secret,
         request_limit_bytes,
     });
@@ -572,6 +582,7 @@ mod tests {
             "http://control-plane:8100",
             "http://reasoning-engine:8200",
             "http://observability:8500",
+            None,
         );
 
         assert_eq!(
@@ -588,6 +599,7 @@ mod tests {
                 "http://control-plane:8100",
                 "http://reasoning-engine:8200",
                 "http://observability:8500",
+                None,
             ),
             None
         );
