@@ -5,7 +5,10 @@ import { parseProject, parseTask, parseRun } from "../lib/api-parsers";
 
 export default function HomePage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [totpCode, setTotpCode] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  
   const [view, setView] = useState<"projects" | "tasks" | "runs">("projects");
   
   const [projects, setProjects] = useState<any[]>([]);
@@ -16,27 +19,162 @@ export default function HomePage() {
   const [selectedTaskId, setSelectedTaskId] = useState<string>("");
   const [token, setToken] = useState("");
 
-  const handleLogin = async (e: any) => {
+  const handleRegister = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
-    // mock login logic since we don't have the full auth credentials for integration in E2E
-    // or we can call the real API:
+    setLoginError("");
     try {
-       // just for UI requirement, mark as logged in
-       if (totpCode) setIsLoggedIn(true);
-    } catch(err) {
-       console.error(err);
+      const res = await fetch("/api/control-plane/v1/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Registration failed");
+      setToken(data.tokens?.accessToken);
+      setIsLoggedIn(true);
+    } catch(err: any) {
+      setLoginError(err.message);
     }
   };
+
+  const handleLogin = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    setLoginError("");
+    try {
+      const res = await fetch("/api/control-plane/v1/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Login failed");
+      setToken(data.tokens?.accessToken);
+      setIsLoggedIn(true);
+    } catch(err: any) {
+      setLoginError(err.message);
+    }
+  };
+
+  const fetchProjects = async () => {
+    try {
+      const res = await fetch("/api/control-plane/v1/projects?offset=0&limit=50", {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Unavailable control-plane");
+      const data = await res.json();
+      setProjects(data.items || []);
+    } catch (err: any) {
+      setLoginError("Error: " + err.message);
+    }
+  };
+
+  const handleCreateProject = async () => {
+    try {
+      const res = await fetch("/api/control-plane/v1/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}`, "x-actor-id": "test-actor" },
+        body: JSON.stringify({ name: "Test Project " + Date.now(), description: "A test project" })
+      });
+      if (res.ok) fetchProjects();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fetchTasks = async (projectId: string) => {
+    try {
+      const res = await fetch(`/api/control-plane/v1/tasks?projectId=${projectId}`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTasks(data.items || []);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleCreateTask = async () => {
+    if (!selectedProjectId) return;
+    try {
+      const res = await fetch("/api/control-plane/v1/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}`, "x-actor-id": "test-actor" },
+        body: JSON.stringify({ projectId: selectedProjectId, title: "Test Task " + Date.now(), description: "Task desc" })
+      });
+      if (res.ok) fetchTasks(selectedProjectId);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleCreateRun = async () => {
+    if (!selectedProjectId || !selectedTaskId) return;
+    try {
+      const res = await fetch("/api/pipeline/pipelines/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: selectedProjectId, task_id: selectedTaskId })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setRuns([...runs, parseRun({
+           id: data.task_id, 
+           steps: data.steps || [],
+           requiresHumanDecision: data.status === "human_required"
+        })]);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const loadRun = async (taskId: string) => {
+    try {
+      const res = await fetch(`/api/pipeline/${taskId}`);
+      if (res.ok) {
+        const data = await res.json();
+        const existing = runs.find(r => r.id === taskId);
+        if (existing) {
+          setRuns(runs.map(r => r.id === taskId ? parseRun({
+             id: data.task_id,
+             steps: data.steps || [],
+             requiresHumanDecision: data.status === "human_required"
+          }) : r));
+        } else {
+          setRuns([...runs, parseRun({
+             id: data.task_id,
+             steps: data.steps || [],
+             requiresHumanDecision: data.status === "human_required"
+          })]);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    if (isLoggedIn) {
+      fetchProjects();
+    }
+  }, [isLoggedIn]);
 
   return (
     <main style={{ maxWidth: 800, margin: "0 auto", padding: "2rem" }}>
       <h1>Панель управления</h1>
       {!isLoggedIn ? (
-        <form onSubmit={handleLogin}>
-          <h2>Login</h2>
-          <input type="text" placeholder="TOTP Code" value={totpCode} onChange={e => setTotpCode(e.target.value)} />
-          <button type="submit">Login with TOTP</button>
-        </form>
+        <div>
+          <h2>Login or Register</h2>
+          {loginError && <p style={{color: 'red'}} className="error-message">{loginError}</p>}
+          <form>
+            <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
+            <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} />
+            <button onClick={handleLogin}>Login</button>
+            <button onClick={handleRegister}>Register</button>
+          </form>
+        </div>
       ) : (
         <div>
            <nav style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
@@ -44,13 +182,20 @@ export default function HomePage() {
              <button onClick={() => setView('tasks')}>Tasks</button>
              <button onClick={() => setView('runs')}>Runs</button>
            </nav>
+           
+           {loginError && <p style={{color: 'red'}} className="error-message">{loginError}</p>}
 
            {view === 'projects' && (
              <div>
                <h2>Project List</h2>
-               <button onClick={() => setProjects([...projects, parseProject({ id: Date.now().toString(), name: 'New Project' })])}>Create Project</button>
+               <button onClick={handleCreateProject}>Create Project</button>
                <ul>
-                 {projects.map(p => <li key={p.id}>{p.name}</li>)}
+                 {projects.map(p => (
+                    <li key={p.id} className="project-item">
+                      {p.name}
+                      <button onClick={() => { setSelectedProjectId(p.id); setView('tasks'); fetchTasks(p.id); }}>Select</button>
+                    </li>
+                 ))}
                </ul>
              </div>
            )}
@@ -58,9 +203,15 @@ export default function HomePage() {
            {view === 'tasks' && (
              <div>
                <h2>Task List</h2>
-               <button onClick={() => setTasks([...tasks, parseTask({ id: Date.now().toString(), title: 'New Task' })])}>Create Task</button>
+               <p>Selected Project: {selectedProjectId}</p>
+               <button onClick={handleCreateTask}>Create Task</button>
                <ul>
-                 {tasks.map(t => <li key={t.id}>{t.title}</li>)}
+                 {tasks.map(t => (
+                   <li key={t.id} className="task-item">
+                     {t.title}
+                     <button onClick={() => { setSelectedTaskId(t.id); setView('runs'); }}>Select for Run</button>
+                   </li>
+                 ))}
                </ul>
              </div>
            )}
@@ -68,11 +219,12 @@ export default function HomePage() {
            {view === 'runs' && (
              <div>
                <h2>Run View</h2>
-               <button onClick={() => setRuns([...runs, parseRun({ id: Date.now().toString(), requiresHumanDecision: true, cost: 0.5, tokens: 100 })])}>Create Mock Run</button>
+               <button onClick={handleCreateRun}>Create Run</button>
                <ul>
                  {runs.map(r => (
-                   <li key={r.id}>
-                     Run {r.id} - Steps: {r.steps.length}, Models: {r.models.length}, Tokens: {r.tokens}, Cost: ${r.cost}, Artifacts: {r.artifacts.length}
+                   <li key={r.id} className="run-item">
+                     Run {r.id} - Steps: {r.steps?.length || 0}, Models: {r.models?.length || 0}, Tokens: {r.tokens || 0}, Cost: ${r.cost || 0}
+                     <button onClick={() => loadRun(r.id)}>Load Detail</button>
                      {r.requiresHumanDecision && <strong style={{color: 'red'}}> (Human decision required)</strong>}
                    </li>
                  ))}
