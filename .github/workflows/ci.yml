@@ -178,7 +178,7 @@ jobs:
           docker compose down -v --remove-orphans || true
 
   measurability:
-    needs: [node, rust, python, eval, image-build, deployment, nats-events, integration]
+    needs: [node, rust, python, eval, image-build, deployment, nats-events, integration, e2e]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
@@ -311,7 +311,7 @@ jobs:
           echo 'commands={"docker compose config -q":"${{ steps.compose_config.outcome }}","python tests/integration/test_pg.py":"${{ steps.integration_tests.outcome }}"}' >> "$GITHUB_OUTPUT"
 
   publish-verification-status:
-    needs: [node, rust, python, eval, image-build, deployment, nats-events, integration, measurability]
+    needs: [node, rust, python, eval, image-build, deployment, nats-events, integration, e2e, measurability]
     if: >-
       ${{
         github.event_name == 'push' &&
@@ -324,6 +324,7 @@ jobs:
         needs.deployment.result == 'success' &&
         needs['nats-events'].result == 'success' &&
         needs.integration.result == 'success' &&
+        needs.e2e.result == 'success' &&
         needs.measurability.result == 'success'
       }}
     runs-on: ubuntu-latest
@@ -355,3 +356,54 @@ jobs:
             --force-with-lease="$state_ref:$observed_old_oid" \
             origin "HEAD:$state_ref"
 
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile=false
+      - name: Install Playwright Browsers
+        run: pnpm --filter @kagent/web exec playwright install --with-deps
+      - name: Prepare environment
+        run: |
+          cp .env.example .env
+          {
+            echo "KAGENT_SERVICE_SECRET=ci-service-secret-not-for-production"
+            echo "JWT_SECRET=ci-jwt-secret-not-for-production-min-32-chars"
+          } >> .env
+      - name: Start services
+        run: docker compose up -d
+      - name: Container diagnostics on failure
+        if: ${{ failure() }}
+        run: |
+          docker compose ps -a
+          docker compose logs --no-color --tail=200
+      - name: Wait for Gateway
+        run: |
+          for i in {1..60}; do
+            if curl --fail --silent http://localhost:8080/health/live; then
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
+      - name: Run Playwright tests
+        run: pnpm --filter @kagent/web exec playwright test
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+          retention-days: 7
+      - name: Remove E2E resources
+        if: ${{ always() }}
+        run: |
+          rm -f .env
+          docker compose down -v --remove-orphans || true
