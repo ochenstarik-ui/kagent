@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Changed
+- Python CI now lints all Python test scopes and runs every unit test directory instead of a named-file allowlist.
 - Refactored TOTP authentication to separate unit-testable policy from PostgreSQL persistence adapter, fixing cross-instance replay issues and atomic one-time challenges.
 
 ### Added
