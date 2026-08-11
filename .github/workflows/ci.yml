@@ -252,6 +252,15 @@ jobs:
         run: pnpm install --frozen-lockfile=false
       - name: Install Playwright Browsers
         run: pnpm --filter @kagent/web exec playwright install --with-deps
+      - name: Prepare environment
+        run: |
+          # Compose reads .env. Without it the gateway exits on an empty service
+          # secret and every container depending on its health fails to start.
+          cp .env.example .env
+          {
+            echo "KAGENT_SERVICE_SECRET=ci-service-secret-not-for-production"
+            echo "JWT_SECRET=ci-jwt-secret-not-for-production-min-32-chars"
+          } >> .env
       - name: Start services
         run: docker compose up -d
       - name: Wait for Gateway
