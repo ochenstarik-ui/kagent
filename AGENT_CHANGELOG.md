@@ -1,5 +1,11 @@
 # Agent Changelog
 
+## 2026-08-12 — Tracked verified capability status
+
+- Scheme B stores accepted `main` push evidence in `docs/ci-results.json`, making deterministic roadmap generation visibly retain verified state.
+- Evidence from pull requests, non-main branches, or incomplete/mismatched provenance fails closed.
+- CI publishes successful main evidence through a unique automation branch and pull request, then explicitly dispatches CI on that branch; direct main pushes, force pushes, and automatic merges remain prohibited.
+
 ## 2026-08-11 — Unprivileged Runtime Sandbox
 
 - **Sandbox Implementation:** Agent Runtime uses `bubblewrap` to securely isolate capabilities.
