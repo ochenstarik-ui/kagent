@@ -1,9 +1,0 @@
-{
-  "id": "refactor_extract_helper",
-  "status": "draft",
-  "category": "refactor",
-  "description": "Extract a duplicated calculation into a helper function without changing behavior.",
-  "base_commit": "none",
-  "task": "Extract the area calculation into a function called compute_area and update both call sites.",
-  "draft_reason": "The repository snapshot is a placeholder; no independently replayable case exists yet."
-}

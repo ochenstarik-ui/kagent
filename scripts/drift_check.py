@@ -20,8 +20,8 @@ import os
 import re
 import subprocess
 import sys
-from datetime import date
-from pathlib import Path
+from datetime import date, timedelta
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -71,7 +71,15 @@ def validate_known_drift(data: Any, today: date | None = None) -> list[str]:
         else:
             if expiry_date < current_date:
                 errors.append(f"known drift entry {index} expired on {expires}")
-        if not isinstance(entry.get("follow_up_task"), str) or not entry["follow_up_task"].strip():
+            elif expiry_date > current_date + timedelta(days=90):
+                errors.append(
+                    f"known drift entry {index} expires more than 90 days from {current_date.isoformat()}"
+                )
+        follow_up_task = entry.get("follow_up_task")
+        if (
+            not isinstance(follow_up_task, str)
+            or follow_up_task.strip().casefold() in {"", "none", "-", "n/a", "tbd"}
+        ):
             errors.append(f"known drift entry {index} has invalid follow_up_task")
     return errors
 
@@ -309,6 +317,76 @@ def _module_dependencies(path: Path, source_files: set[Path]) -> set[Path]:
     return set()
 
 
+def _playwright_test_matches(content: str) -> list[str] | None:
+    array_match = re.search(r"\btestMatch\s*:\s*\[(?P<items>[^\]]*)\]", content, re.DOTALL)
+    if array_match:
+        return [
+            match.group("value")
+            for match in re.finditer(
+                r"(?P<quote>['\"])(?P<value>[^'\"]+)(?P=quote)",
+                array_match.group("items"),
+            )
+        ]
+    string_match = re.search(
+        r"\btestMatch\s*:\s*(?P<quote>['\"])(?P<value>[^'\"]+)(?P=quote)",
+        content,
+    )
+    if string_match:
+        return [string_match.group("value")]
+    return None
+
+
+def _matches_playwright_glob(path: str, pattern: str) -> bool:
+    candidate = PurePosixPath(path)
+    return candidate.match(pattern) or (
+        pattern.startswith("**/") and candidate.match(pattern.removeprefix("**/"))
+    )
+
+
+def _playwright_entry_points(source_files: set[Path]) -> set[Path]:
+    config_names = {
+        "playwright.config.ts",
+        "playwright.config.js",
+        "playwright.config.mjs",
+        "playwright.config.cjs",
+    }
+    entry_points: set[Path] = set()
+    for source_root_name in ("apps", "packages", "services"):
+        source_root = ROOT / source_root_name
+        if not source_root.exists():
+            continue
+        for config in source_root.rglob("playwright.config.*"):
+            if config.name not in config_names:
+                continue
+            content = config.read_text(encoding="utf-8", errors="replace")
+            test_dir_match = re.search(
+                r"\btestDir\s*:\s*(?P<quote>['\"])(?P<value>[^'\"]+)(?P=quote)",
+                content,
+            )
+            test_dir = (
+                config.parent / (test_dir_match.group("value") if test_dir_match else ".")
+            ).resolve()
+            test_matches = _playwright_test_matches(content)
+            for source_file in source_files:
+                if source_file == config.resolve():
+                    entry_points.add(source_file)
+                if not source_file.is_relative_to(test_dir):
+                    continue
+                relative_path = source_file.relative_to(test_dir).as_posix()
+                if test_matches is None:
+                    if re.search(
+                        r"\.(?:spec|test)\.(?:js|jsx|ts|tsx|mjs|cjs)$",
+                        source_file.name,
+                    ):
+                        entry_points.add(source_file)
+                elif any(
+                    _matches_playwright_glob(relative_path, pattern)
+                    for pattern in test_matches
+                ):
+                    entry_points.add(source_file)
+    return entry_points
+
+
 def find_unreachable_modules(entry_points: list[str], capabilities: list[dict[str, Any]]) -> list[str]:
     """Return production modules not reachable through static imports from entry points."""
     del capabilities
@@ -318,6 +396,8 @@ def find_unreachable_modules(entry_points: list[str], capabilities: list[dict[st
         for entry_point in entry_points
         if (path := ROOT / entry_point).resolve() in source_files
     }
+    reachable.update(path for path in source_files if path.name == "conftest.py")
+    reachable.update(_playwright_entry_points(source_files))
     pending = list(reachable)
     while pending:
         current = pending.pop()

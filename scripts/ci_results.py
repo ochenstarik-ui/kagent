@@ -46,9 +46,11 @@ def build_ci_results(
     commit: str,
     timestamp: str,
     run_url: str,
+    event: str = "push",
+    ref: str = "refs/heads/main",
 ) -> dict[str, Any]:
     """Normalize the Actions needs context and attach run provenance."""
-    provenance = (run_id, commit, timestamp, run_url)
+    provenance = (run_id, commit, timestamp, run_url, event, ref)
     if any(not isinstance(value, str) or not value for value in provenance):
         raise ValueError("run provenance fields must be non-empty strings")
     run = {
@@ -56,6 +58,8 @@ def build_ci_results(
         "commit": commit,
         "timestamp": timestamp,
         "url": run_url,
+        "event": event,
+        "ref": ref,
     }
     jobs: dict[str, dict[str, str]] = {}
     commands: dict[str, dict[str, str]] = {}
@@ -102,6 +106,8 @@ def main() -> int:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--commit", required=True)
     parser.add_argument("--run-url", required=True)
+    parser.add_argument("--event", required=True)
+    parser.add_argument("--ref", required=True)
     parser.add_argument(
         "--timestamp",
         default=None,
@@ -122,6 +128,8 @@ def main() -> int:
         commit=args.commit,
         timestamp=timestamp,
         run_url=args.run_url,
+        event=args.event,
+        ref=args.ref,
     )
     args.output.write_text(
         json.dumps(results, indent=2, sort_keys=True) + "\n",

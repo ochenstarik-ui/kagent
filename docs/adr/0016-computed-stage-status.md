@@ -19,6 +19,10 @@ Delivery status is computed, not written.
 
 **Computed status.** The roadmap status of a stage is generated from the latest continuous integration run: a capability is complete only when its declared evidence exists and passes. Manual edits of generated status blocks are rejected by a check.
 
+**Tracked deterministic evidence (scheme B).** `docs/ci-results.json` is a versioned generator input, so deterministic and check-only roadmap generation visibly preserves the last accepted verification state. Evidence is eligible only for a successful `push` run on `refs/heads/main`, with complete and matching run ID, commit, timestamp, and URL provenance. Pull request, branch, missing, failed, skipped, cancelled, malformed, or mismatched evidence fails closed and cannot verify a capability. Only evidence named by the capability registry contributes to status; the registry's evidence composition is unchanged.
+
+**PR-only evidence publication.** After every named evidence job succeeds on a main push, CI creates a unique automation branch containing only the tracked evidence and generated roadmap, pushes that branch normally, and opens a pull request to `main`. It never pushes directly to `main`, force-pushes, or auto-merges. Because pull requests opened by `GITHUB_TOKEN` do not normally start CI, automation explicitly dispatches CI for the created branch. Pull request, branch, and manually dispatched runs cannot publish evidence pull requests.
+
 **Drift detection in continuous integration.** A job compares declared capabilities against observed evidence and fails the build on: a capability claimed without passing evidence, a module present in the tree but not reachable from any entry point, a documented endpoint absent from the served route table, and a documented environment variable never read.
 
 **Reachability rule.** Code that no entry point can reach is either wired up or removed. Unreferenced modules may not be counted as delivered capability.
@@ -30,6 +34,8 @@ Delivery status is computed, not written.
 ## Consequences
 
 - Status becomes trustworthy enough to plan against, at the cost of admitting a lower completion level than the current documents claim.
+- Repository readers can see the last accepted verified, partial, and unverified states without downloading a workflow artifact.
+- Verification-state updates add a reviewable automation pull request and require live GitHub Actions validation of token permissions and explicit workflow dispatch.
 - Some presently claimed stages will revert to incomplete on first application; this is a correction, not a regression.
 - The reachability rule forces a decision on partially integrated work instead of letting it accumulate.
 - Documentation and code are kept in sync by the build rather than by discipline.

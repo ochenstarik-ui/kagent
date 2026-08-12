@@ -4,6 +4,7 @@ on:
   push:
     branches: ["main"]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -115,12 +116,16 @@ jobs:
           CI_RUN_ID: ${{ github.run_id }}
           CI_COMMIT: ${{ github.sha }}
           CI_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          CI_EVENT: ${{ github.event_name }}
+          CI_REF: ${{ github.ref }}
         run: >-
           python scripts/ci_results.py
           --needs-json "$CI_JOB_RESULTS"
           --run-id "$CI_RUN_ID"
           --commit "$CI_COMMIT"
           --run-url "$CI_RUN_URL"
+          --event "$CI_EVENT"
+          --ref "$CI_REF"
           --output ci-results.json
       - name: Guard committed roadmap
         run: python scripts/roadmap_status.py --check --no-run-commands
@@ -228,4 +233,50 @@ jobs:
         if: ${{ always() }}
         run: >-
           echo 'commands={"docker compose config -q":"${{ steps.compose_config.outcome }}","python tests/integration/test_pg.py":"${{ steps.integration_tests.outcome }}"}' >> "$GITHUB_OUTPUT"
+
+  publish-verification-status:
+    needs: [node, rust, python, eval, nats-events, integration, measurability]
+    if: >-
+      ${{
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/main' &&
+        needs.node.result == 'success' &&
+        needs.rust.result == 'success' &&
+        needs.python.result == 'success' &&
+        needs.eval.result == 'success' &&
+        needs['nats-events'].result == 'success' &&
+        needs.integration.result == 'success' &&
+        needs.measurability.result == 'success'
+      }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/download-artifact@v4
+        with:
+          name: computed-roadmap
+          path: status-evidence
+      - name: Publish verified status PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cp status-evidence/ci-results.json docs/ci-results.json
+          python scripts/roadmap_status.py --no-run-commands
+          python scripts/roadmap_status.py --check --no-run-commands
+          branch="automation/verification-state-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add docs/ci-results.json docs/ROADMAP.md
+          git commit -m "Update verified capability status"
+          git push origin "$branch"
+          gh pr create --base main --head "$branch" --title "Update verified capability status" --body "Tracks successful main CI evidence from run ${GITHUB_RUN_ID}."
+          gh workflow run ci.yml --ref "$branch"
 
