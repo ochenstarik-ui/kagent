@@ -21,6 +21,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 CAPABILITIES_PATH = ROOT / "docs" / "capabilities.json"
+CI_RESULTS_PATH = ROOT / "docs" / "ci-results.json"
 ROADMAP_PATH = ROOT / "docs" / "ROADMAP.md"
 
 
@@ -65,7 +66,7 @@ def load_ci_results(path: Path) -> dict[str, Any]:
     if not isinstance(results, dict):
         raise TypeError("CI results must be a JSON object")
     run = results.get("run")
-    required = ("id", "commit", "timestamp", "url")
+    required = ("id", "commit", "timestamp", "url", "event", "ref")
     if not isinstance(run, dict) or any(
         not isinstance(run.get(field), str) or not run[field]
         for field in required
@@ -116,6 +117,8 @@ def ci_provenance(result: object, ci_results: object) -> str | None:
     run = ci_results.get("run")
     if not isinstance(run, dict):
         return None
+    if run.get("event") != "push" or run.get("ref") != "refs/heads/main":
+        return None
     provenance_fields = {
         "run_id": run.get("id"),
         "commit": run.get("commit"),
@@ -128,10 +131,11 @@ def ci_provenance(result: object, ci_results: object) -> str | None:
         return None
     run_id = provenance_fields["run_id"]
     commit = provenance_fields["commit"]
+    timestamp = provenance_fields["timestamp"]
     url = provenance_fields["url"]
     run_reference = f"CI run {run_id}"
     run_reference = f"[{run_reference}]({url})"
-    return f"{run_reference}, commit `{str(commit)[:7]}`"
+    return f"{run_reference}, commit `{str(commit)[:7]}`, {timestamp}"
 
 
 def evaluate_ci_job(
@@ -357,6 +361,8 @@ def main() -> int:
     capabilities = load_capabilities()
     if args.ci_results:
         capabilities["_ci_results"] = load_ci_results(args.ci_results)
+    elif args.no_run_commands and CI_RESULTS_PATH.exists():
+        capabilities["_ci_results"] = load_ci_results(CI_RESULTS_PATH)
 
     roadmap = build_roadmap(capabilities, execute_commands=not args.no_run_commands)
     if args.check:
