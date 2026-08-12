@@ -428,9 +428,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let listener = TcpListener::bind(address).await?;
     info!(%address, control_plane_url = %control_plane_url, reasoning_engine_url = %reasoning_engine_url, "gateway_started");
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    // The rate limiter extracts ConnectInfo<SocketAddr> to identify a client when
+    // x-forwarded-for is absent. Without connect info in the make-service that
+    // extraction fails and every request answers 500 — including the gateway's own
+    // health probe, so the container never becomes healthy and nothing behind it
+    // starts. Unit tests missed it because they call the middleware directly.
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await?;
 
     Ok(())
 }
