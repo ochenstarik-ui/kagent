@@ -263,6 +263,13 @@ jobs:
           } >> .env
       - name: Start services
         run: docker compose up -d
+      - name: Container diagnostics on failure
+        if: ${{ failure() }}
+        run: |
+          # Without this the job reports "container unhealthy" and nothing else,
+          # which leaves the cause invisible.
+          docker compose ps -a
+          docker compose logs --no-color --tail=200
       - name: Wait for Gateway
         run: |
           for i in {1..30}; do
