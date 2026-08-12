@@ -1,9 +1,0 @@
-{
-  "id": "dependency_upgrade_pin",
-  "status": "draft",
-  "category": "dependency_upgrade",
-  "description": "Pin a dependency to a newer version in requirements.txt and verify the format.",
-  "base_commit": "none",
-  "task": "Update requirements.txt to pin requests>=2.32.0.",
-  "draft_reason": "The repository snapshot is a placeholder; no independently replayable case exists yet."
-}

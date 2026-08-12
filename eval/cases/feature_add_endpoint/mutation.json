@@ -1,0 +1,10 @@
+{
+  "description": "Delete the adjacent liveness route while leaving readiness behavior intact.",
+  "operations": [
+    {
+      "kind": "write",
+      "path": "app.py",
+      "content": "from time import monotonic\n\n_STARTED = monotonic()\n\n\ndef dispatch(method: str, path: str) -> tuple[int, dict[str, object]]:\n    if method == \"GET\" and path == \"/health/ready\":\n        return 200, {\"status\": \"ready\", \"uptime\": int(monotonic() - _STARTED)}\n    return 404, {\"error\": \"not found\"}\n"
+    }
+  ]
+}

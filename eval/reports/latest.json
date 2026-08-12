@@ -1,12 +1,86 @@
 {
-  "timestamp": "2026-08-09T15:44:10Z",
-  "autonomy_rate": 0.0,
+  "timestamp": "2026-08-11T22:12:37Z",
+  "autonomy_rate": 1.0,
   "rework_rate": 0.0,
-  "average_repair_cycles": 0.0,
+  "average_repair_cycles": 0.6666666666666666,
   "escape_defects_total": 0,
-  "average_time_to_first_artifact_ms": 0.0,
-  "average_cost_usd": 0.0,
+  "average_time_to_first_artifact_ms": 276.3333333333333,
+  "average_cost_usd": 0.005366666666666666,
   "policy_violation_attempts_total": 0,
-  "results": [],
+  "provider_calls_total": 0,
+  "tokens_spent_total": 0,
+  "results": [
+    {
+      "case_id": "bugfix_leaky_limiter",
+      "category": "bugfix",
+      "passed": true,
+      "autonomy": true,
+      "interventions": 0,
+      "repair_cycles": 1,
+      "escape_defects": 0,
+      "time_to_first_artifact_ms": 280,
+      "integrated_change_cost_usd": 0.0042,
+      "policy_violation_attempts": 0,
+      "duration_ms": 810,
+      "empty_diff_rejected": true,
+      "replay_acceptance_passed": true,
+      "mutation_rejected": true,
+      "provider_calls": 0,
+      "tokens_spent": 0,
+      "provider_environment_scrubbed": true,
+      "errors": [],
+      "artifacts": [
+        "limiter.py"
+      ]
+    },
+    {
+      "case_id": "feature_add_endpoint",
+      "category": "feature",
+      "passed": true,
+      "autonomy": true,
+      "interventions": 0,
+      "repair_cycles": 0,
+      "escape_defects": 0,
+      "time_to_first_artifact_ms": 273,
+      "integrated_change_cost_usd": 0.0068,
+      "policy_violation_attempts": 0,
+      "duration_ms": 834,
+      "empty_diff_rejected": true,
+      "replay_acceptance_passed": true,
+      "mutation_rejected": true,
+      "provider_calls": 0,
+      "tokens_spent": 0,
+      "provider_environment_scrubbed": true,
+      "errors": [],
+      "artifacts": [
+        "app.py",
+        "tests/test_ready.py"
+      ]
+    },
+    {
+      "case_id": "security_fix_header",
+      "category": "security_fix",
+      "passed": true,
+      "autonomy": true,
+      "interventions": 0,
+      "repair_cycles": 1,
+      "escape_defects": 0,
+      "time_to_first_artifact_ms": 276,
+      "integrated_change_cost_usd": 0.0051,
+      "policy_violation_attempts": 0,
+      "duration_ms": 822,
+      "empty_diff_rejected": true,
+      "replay_acceptance_passed": true,
+      "mutation_rejected": true,
+      "provider_calls": 0,
+      "tokens_spent": 0,
+      "provider_environment_scrubbed": true,
+      "errors": [],
+      "artifacts": [
+        "web.py",
+        "tests/test_security_header.py"
+      ]
+    }
+  ],
   "gate_passed": false
 }

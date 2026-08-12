@@ -1,0 +1,24 @@
+{
+  "cassette_version": 1,
+  "lookup_key": {
+    "agent_role": "developer",
+    "prompt_hash": "sha256:6da42f6844369c5525b3e3adc1ee0ebb025729ee89f1215ac97eccc02f0586b1"
+  },
+  "request": {
+    "task": "Fix RateLimiter.allow so a limit of two accepts exactly two requests per client. Preserve independent budgets."
+  },
+  "response": {
+    "stop_reason": "completed",
+    "operations": [
+      {
+        "kind": "write",
+        "path": "limiter.py",
+        "content": "class RateLimiter:\n    def __init__(self, limit: int = 2) -> None:\n        self.limit = limit\n        self._counts: dict[str, int] = {}\n\n    def allow(self, client: str) -> bool:\n        count = self._counts.get(client, 0)\n        if count >= self.limit:\n            return False\n        self._counts[client] = count + 1\n        return True\n"
+      }
+    ]
+  },
+  "metrics": {
+    "repair_cycles": 1,
+    "cost_usd": 0.0042
+  }
+}

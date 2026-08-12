@@ -1,0 +1,29 @@
+{
+  "cassette_version": 1,
+  "lookup_key": {
+    "agent_role": "developer",
+    "prompt_hash": "sha256:ce26d388ea9d3f88ffa934a5a320d41c15ba0c34b62398a497370c0d62a13f19"
+  },
+  "request": {
+    "task": "Set X-Content-Type-Options: nosniff on every response and add a regression test. Preserve existing custom headers and statuses."
+  },
+  "response": {
+    "stop_reason": "completed",
+    "operations": [
+      {
+        "kind": "write",
+        "path": "web.py",
+        "content": "def response(path: str, headers: dict[str, str] | None = None) -> tuple[int, str, dict[str, str]]:\n    response_headers = dict(headers or {})\n    response_headers[\"X-Content-Type-Options\"] = \"nosniff\"\n    if path == \"/\":\n        return 200, \"home\", response_headers\n    return 404, \"not found\", response_headers\n"
+      },
+      {
+        "kind": "write",
+        "path": "tests/test_security_header.py",
+        "content": "import unittest\n\nfrom web import response\n\n\nclass SecurityHeaderTests(unittest.TestCase):\n    def test_nosniff_is_set_on_every_response(self) -> None:\n        for path in (\"/\", \"/missing\"):\n            self.assertEqual(response(path)[2][\"X-Content-Type-Options\"], \"nosniff\")\n\n\nif __name__ == \"__main__\":\n    unittest.main()\n"
+      }
+    ]
+  },
+  "metrics": {
+    "repair_cycles": 1,
+    "cost_usd": 0.0051
+  }
+}
