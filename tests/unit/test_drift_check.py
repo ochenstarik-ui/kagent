@@ -2,6 +2,8 @@
 
 from datetime import date
 
+import pytest
+
 from scripts import drift_check
 
 
@@ -123,3 +125,124 @@ def test_documented_environment_variable_must_be_read(monkeypatch, tmp_path) -> 
     errors = drift_check.check_env_documentation(["USED"])
 
     assert errors == ["documented env vars never read: UNUSED"]
+
+
+@pytest.mark.parametrize("follow_up_task", ["None", "NONE", "-", "n/a", "TBD", ""])
+def test_known_drift_rejects_placeholder_follow_up_tasks(follow_up_task: str) -> None:
+    data = {
+        "version": 1,
+        "entries": [
+            {
+                "path": "services/example/orphan.py",
+                "reason": "Pending cleanup.",
+                "expires": "2026-09-01",
+                "follow_up_task": follow_up_task,
+            }
+        ],
+    }
+
+    errors = drift_check.validate_known_drift(data, today=date(2026, 8, 9))
+
+    assert errors == ["known drift entry 0 has invalid follow_up_task"]
+
+
+@pytest.mark.parametrize("follow_up_task", ["KAGENT-123", "t_cleanup_tests"])
+def test_known_drift_accepts_genuine_follow_up_tasks(follow_up_task: str) -> None:
+    data = {
+        "version": 1,
+        "entries": [
+            {
+                "path": "services/example/orphan.py",
+                "reason": "Pending cleanup.",
+                "expires": "2026-09-01",
+                "follow_up_task": follow_up_task,
+            }
+        ],
+    }
+
+    assert drift_check.validate_known_drift(data, today=date(2026, 8, 9)) == []
+
+
+def test_known_drift_rejects_expiry_beyond_90_days() -> None:
+    data = {
+        "version": 1,
+        "entries": [
+            {
+                "path": "services/example/orphan.py",
+                "reason": "Pending cleanup.",
+                "expires": "2026-11-08",
+                "follow_up_task": "KAGENT-123",
+            }
+        ],
+    }
+
+    errors = drift_check.validate_known_drift(data, today=date(2026, 8, 9))
+
+    assert errors == ["known drift entry 0 expires more than 90 days from 2026-08-09"]
+
+
+def test_known_drift_accepts_expiry_at_90_days() -> None:
+    data = {
+        "version": 1,
+        "entries": [
+            {
+                "path": "services/example/orphan.py",
+                "reason": "Pending cleanup.",
+                "expires": "2026-11-07",
+                "follow_up_task": "KAGENT-123",
+            }
+        ],
+    }
+
+    assert drift_check.validate_known_drift(data, today=date(2026, 8, 9)) == []
+
+
+def test_nested_conftest_is_an_implicit_runner_entrypoint(monkeypatch, tmp_path) -> None:
+    conftest = tmp_path / "services" / "example" / "nested" / "conftest.py"
+    conftest.parent.mkdir(parents=True)
+    conftest.write_text("pytest_plugins = []\n", encoding="utf-8")
+    monkeypatch.setattr(drift_check, "ROOT", tmp_path)
+
+    unreachable = drift_check.find_unreachable_modules([], [])
+
+    assert "services/example/nested/conftest.py" not in unreachable
+
+
+@pytest.mark.parametrize(
+    ("config_body", "runner_file"),
+    [
+        ("testDir: './browser-tests'", "smoke.spec.ts"),
+        ("testDir: './browser-tests', testMatch: '**/*.pw.ts'", "smoke.pw.ts"),
+        ("testDir: './browser-tests', testMatch: ['**/*.pw.ts']", "smoke.pw.ts"),
+    ],
+)
+def test_playwright_config_derives_runner_entrypoints(
+    monkeypatch,
+    tmp_path,
+    config_body: str,
+    runner_file: str,
+) -> None:
+    app = tmp_path / "apps" / "frontend"
+    test_dir = app / "browser-tests"
+    test_dir.mkdir(parents=True)
+    (app / "playwright.config.ts").write_text(
+        f"export default defineConfig({{{config_body}}});\n",
+        encoding="utf-8",
+    )
+    (test_dir / runner_file).write_text("export {};\n", encoding="utf-8")
+    monkeypatch.setattr(drift_check, "ROOT", tmp_path)
+
+    unreachable = drift_check.find_unreachable_modules([], [])
+
+    assert f"apps/frontend/browser-tests/{runner_file}" not in unreachable
+
+
+def test_unimported_service_module_remains_unreachable(monkeypatch, tmp_path) -> None:
+    orphan = tmp_path / "services" / "example" / "orphan.py"
+    orphan.parent.mkdir(parents=True)
+    orphan.write_text("VALUE = 1\n", encoding="utf-8")
+    monkeypatch.setattr(drift_check, "ROOT", tmp_path)
+
+    unreachable = drift_check.find_unreachable_modules([], [])
+
+    assert unreachable == ["services/example/orphan.py"]
