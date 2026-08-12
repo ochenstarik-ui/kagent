@@ -1,5 +1,23 @@
 # Agent Changelog
 
+## 2026-08-12 — Runnable replay evaluation cases
+
+- Eval case contract version 1 combines a deterministic repository snapshot, task contract,
+  tracked write-operation cassette, immutable verifier, expected artifacts, and a declared
+  adjacent-behavior mutation.
+- A replayed case counts only if untouched and mutated copies fail while the recorded response
+  passes; mutable candidate tests are not the sole oracle.
+- Replay has no provider path, scrubs provider variables for subprocesses, and reports zero
+  calls/tokens plus cassette-recorded cost and repairs. This is explicitly not claimed as a
+  network sandbox.
+- Eval metrics remain observational and do not gate releases.
+
+## 2026-08-12 — Tracked verified capability status
+
+- Scheme B stores accepted `main` push evidence in `docs/ci-results.json`, making deterministic roadmap generation visibly retain verified state.
+- Evidence from pull requests, non-main branches, or incomplete/mismatched provenance fails closed.
+- CI publishes successful main evidence through a unique automation branch and pull request, then explicitly dispatches CI on that branch; direct main pushes, force pushes, and automatic merges remain prohibited.
+
 ## 2026-08-11 — Unprivileged Runtime Sandbox
 
 - **Sandbox Implementation:** Agent Runtime uses `bubblewrap` to securely isolate capabilities.

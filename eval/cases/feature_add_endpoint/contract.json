@@ -1,9 +1,33 @@
 {
+  "contract_version": 1,
+  "status": "active",
+  "snapshot": "base.tar.gz",
+  "cassette": "cassette.json",
+  "mutation": "mutation.json",
+  "verifier": "verifier.py",
+  "runtime_guarantees": {
+    "dependencies": "python-stdlib-only",
+    "network_required": false,
+    "provider_environment_scrubbed": true,
+    "network_sandboxed": false
+  },
   "id": "feature_add_endpoint",
-  "status": "draft",
   "category": "feature",
-  "description": "Add a new health endpoint to a FastAPI service that returns uptime.",
-  "base_commit": "none",
-  "task": "Add a GET /health/ready endpoint to app.py that returns {\"status\": \"ready\", \"uptime\": <seconds>}.",
-  "draft_reason": "The repository snapshot is a placeholder; no independently replayable case exists yet."
+  "description": "Add a readiness endpoint beside existing liveness behavior.",
+  "task": "Add GET /health/ready returning status ready and a non-negative integer uptime. Add an acceptance test; preserve existing routes.",
+  "acceptance": [
+    [
+      "python",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "tests"
+    ]
+  ],
+  "expected_artifacts": [
+    "app.py",
+    "tests/test_ready.py"
+  ],
+  "adjacent_behavior": "GET /health/live and unknown-route handling remain unchanged."
 }

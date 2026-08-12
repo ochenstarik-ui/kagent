@@ -1,0 +1,150 @@
+{
+  "commands": {
+    "cargo clippy --manifest-path services/gateway/Cargo.toml --all-targets -- -D warnings": {
+      "commit": "4e0a20dd20630b988df3c9fe0b05e5c9027bd681",
+      "conclusion": "success",
+      "job": "rust",
+      "run_id": "31519844840",
+      "timestamp": "2026-08-11T17:54:02.770854Z",
+      "url": "https://github.com/ochenstarik-ui/kagent/actions/runs/31519844840"
+    },
+    "cargo fmt --manifest-path services/gateway/Cargo.toml --check": {
+      "commit": "4e0a20dd20630b988df3c9fe0b05e5c9027bd681",
+      "conclusion": "success",
+      "job": "rust",
+      "run_id": "31519844840",
+      "timestamp": "2026-08-11T17:54:02.770854Z",
+      "url": "https://github.com/ochenstarik-ui/kagent/actions/runs/31519844840"
+    },
+    "cargo test --manifest-path services/gateway/Cargo.toml": {
+      "commit": "4e0a20dd20630b988df3c9fe0b05e5c9027bd681",
+      "conclusion": "success",
+      "job": "rust",
+      "run_id": "31519844840",
+      "timestamp": "2026-08-11T17:54:02.770854Z",
+      "url": "https://github.com/ochenstarik-ui/kagent/actions/runs/31519844840"
+    },
+    "docker compose config -q": {
+      "commit": "4e0a20dd20630b988df3c9fe0b05e5c9027bd681",
+      "conclusion": "success",
+      "job": "integration",
+      "run_id": "31519844840",
+      "timestamp": "2026-08-11T17:54:02.770854Z",
+      "url": "https://github.com/ochenstarik-ui/kagent/actions/runs/31519844840"
+    },
+    "pnpm build": {
+      "commit": "4e0a20dd20630b988df3c9fe0b05e5c9027bd681",
+      "conclusion": "success",
+      "job": "node",
+      "run_id": "31519844840",
+      "timestamp": "2026-08-11T17:54:02.770854Z",
+      "url": "https://github.com/ochenstarik-ui/kagent/actions/runs/31519844840"
+    },
+    "pnpm test": {
+      "commit": "4e0a20dd20630b988df3c9fe0b05e5c9027bd681",
+      "conclusion": "success",
+      "job": "node",
+      "run_id": "31519844840",
+      "timestamp": "2026-08-11T17:54:02.770854Z",
+      "url": "https://github.com/ochenstarik-ui/kagent/actions/runs/31519844840"
+    },
+    "pnpm typecheck": {
+      "commit": "4e0a20dd20630b988df3c9fe0b05e5c9027bd681",
+      "conclusion": "success",
+      "job": "node",
+      "run_id": "31519844840",
+      "timestamp": "2026-08-11T17:54:02.770854Z",
+      "url": "https://github.com/ochenstarik-ui/kagent/actions/runs/31519844840"
+    },
+    "python scripts/drift_check.py": {
+      "commit": "4e0a20dd20630b988df3c9fe0b05e5c9027bd681",
+      "conclusion": "success",
+      "job": "python",
+      "run_id": "31519844840",
+      "timestamp": "2026-08-11T17:54:02.770854Z",
+      "url": "https://github.com/ochenstarik-ui/kagent/actions/runs/31519844840"
+    },
+    "python scripts/eval_suite.py --replay": {
+      "commit": "4e0a20dd20630b988df3c9fe0b05e5c9027bd681",
+      "conclusion": "success",
+      "job": "eval",
+      "run_id": "31519844840",
+      "timestamp": "2026-08-11T17:54:02.770854Z",
+      "url": "https://github.com/ochenstarik-ui/kagent/actions/runs/31519844840"
+    },
+    "python scripts/validate_repository.py": {
+      "commit": "4e0a20dd20630b988df3c9fe0b05e5c9027bd681",
+      "conclusion": "success",
+      "job": "python",
+      "run_id": "31519844840",
+      "timestamp": "2026-08-11T17:54:02.770854Z",
+      "url": "https://github.com/ochenstarik-ui/kagent/actions/runs/31519844840"
+    },
+    "python tests/integration/test_pg.py": {
+      "commit": "4e0a20dd20630b988df3c9fe0b05e5c9027bd681",
+      "conclusion": "success",
+      "job": "integration",
+      "run_id": "31519844840",
+      "timestamp": "2026-08-11T17:54:02.770854Z",
+      "url": "https://github.com/ochenstarik-ui/kagent/actions/runs/31519844840"
+    }
+  },
+  "jobs": {
+    "eval": {
+      "commit": "4e0a20dd20630b988df3c9fe0b05e5c9027bd681",
+      "conclusion": "success",
+      "name": "eval",
+      "run_id": "31519844840",
+      "timestamp": "2026-08-11T17:54:02.770854Z",
+      "url": "https://github.com/ochenstarik-ui/kagent/actions/runs/31519844840"
+    },
+    "integration": {
+      "commit": "4e0a20dd20630b988df3c9fe0b05e5c9027bd681",
+      "conclusion": "success",
+      "name": "integration",
+      "run_id": "31519844840",
+      "timestamp": "2026-08-11T17:54:02.770854Z",
+      "url": "https://github.com/ochenstarik-ui/kagent/actions/runs/31519844840"
+    },
+    "nats-events": {
+      "commit": "4e0a20dd20630b988df3c9fe0b05e5c9027bd681",
+      "conclusion": "success",
+      "name": "nats-events",
+      "run_id": "31519844840",
+      "timestamp": "2026-08-11T17:54:02.770854Z",
+      "url": "https://github.com/ochenstarik-ui/kagent/actions/runs/31519844840"
+    },
+    "node": {
+      "commit": "4e0a20dd20630b988df3c9fe0b05e5c9027bd681",
+      "conclusion": "success",
+      "name": "node",
+      "run_id": "31519844840",
+      "timestamp": "2026-08-11T17:54:02.770854Z",
+      "url": "https://github.com/ochenstarik-ui/kagent/actions/runs/31519844840"
+    },
+    "python": {
+      "commit": "4e0a20dd20630b988df3c9fe0b05e5c9027bd681",
+      "conclusion": "success",
+      "name": "python",
+      "run_id": "31519844840",
+      "timestamp": "2026-08-11T17:54:02.770854Z",
+      "url": "https://github.com/ochenstarik-ui/kagent/actions/runs/31519844840"
+    },
+    "rust": {
+      "commit": "4e0a20dd20630b988df3c9fe0b05e5c9027bd681",
+      "conclusion": "success",
+      "name": "rust",
+      "run_id": "31519844840",
+      "timestamp": "2026-08-11T17:54:02.770854Z",
+      "url": "https://github.com/ochenstarik-ui/kagent/actions/runs/31519844840"
+    }
+  },
+  "run": {
+    "commit": "4e0a20dd20630b988df3c9fe0b05e5c9027bd681",
+    "event": "push",
+    "id": "31519844840",
+    "ref": "refs/heads/main",
+    "timestamp": "2026-08-11T17:54:02.770854Z",
+    "url": "https://github.com/ochenstarik-ui/kagent/actions/runs/31519844840"
+  }
+}
