@@ -1,8 +1,11 @@
 FROM node:22-alpine
 WORKDIR /app
-COPY services/control-plane/package.json .
-RUN corepack enable && pnpm install --prod
-COPY services/control-plane/src/ ./src/
-COPY services/control-plane/tsconfig.json .
-COPY packages/contracts/ ../contracts/
-CMD ["npx", "tsx", "src/main.ts"]
+RUN corepack enable
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY packages/contracts/package.json ./packages/contracts/
+COPY services/control-plane/package.json ./services/control-plane/
+RUN pnpm install --frozen-lockfile
+COPY packages/contracts/ ./packages/contracts/
+COPY services/control-plane/ ./services/control-plane/
+RUN pnpm --filter @kagent/contracts build && pnpm --filter @kagent/control-plane build
+CMD ["node", "services/control-plane/dist/main.js"]

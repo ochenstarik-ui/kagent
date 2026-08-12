@@ -7,6 +7,8 @@
 ## [Unreleased]
 
 ### Changed
+- CI now builds all seven service images on every push, pull request, and manual dispatch without running or publishing them, using scoped GitHub Actions layer caches.
+- Docker builds now compile the gateway from real sources, install the control-plane within its pnpm workspace, and no longer require a missing web `public` directory.
 - The replay evaluation suite now uses three runnable, deterministic stdlib repository snapshots with tracked response cassettes, immutable acceptance verifiers, empty-diff proofs, and adjacent-behavior mutation proofs; reports include zero-provider replay counters and recorded per-case cost/repair metrics.
 - Verified capability status is now generated deterministically from tracked successful `main` push evidence; automation updates the evidence and roadmap through a pull request rather than pushing to `main`.
 - Python CI now lints all Python test scopes and runs every unit test directory instead of a named-file allowlist.

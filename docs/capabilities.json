@@ -128,6 +128,15 @@
       "artifacts": ["docker-compose.yml", ".env.example", "migrations/001_initial_schema.sql", "migrations/002_auth.sql"]
     },
     {
+      "id": "infrastructure.images_build",
+      "stage": "0.7",
+      "name": "Service images build",
+      "module": ".github/workflows/ci.yml",
+      "owner": "root",
+      "evidence": ["image_build_ci"],
+      "artifacts": [".github/workflows/ci.yml", "services/gateway/Dockerfile", "services/control-plane/Dockerfile", "services/reasoning-engine/Dockerfile", "services/agent_runtime/Dockerfile", "services/pipeline/Dockerfile", "services/observability/Dockerfile", "apps/web/Dockerfile"]
+    },
+    {
       "id": "gateway.proxy",
       "stage": "0.8",
       "name": "Rust gateway reverse proxy",
@@ -235,6 +244,7 @@
     "python_ci": { "type": "ci", "job": "python", "allow_failure": false },
     "measurability_ci": { "type": "ci", "job": "measurability", "allow_failure": false },
     "nats_events_ci": { "type": "ci", "job": "nats-events", "allow_failure": false },
+    "image_build_ci": { "type": "ci", "job": "image-build", "allow_failure": false },
     "compose_syntax": { "type": "command", "command": "docker compose config -q", "allow_failure": false }
   },
   "route_table": {
