@@ -66,21 +66,13 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -r services/pipeline/requirements.txt ruff pytest pytest-asyncio
-      - run: ruff check services/ scripts/ tests/unit/ --select E --ignore E501,E402
+      - run: ruff check services scripts tests
       - name: Run unit tests
         run: >-
           python -m pytest
+          tests/unit
           services/reasoning-engine/tests/unit
           services/pipeline/tests/unit
-          tests/unit/test_measurability.py
-          tests/unit/test_eval_suite.py
-          tests/unit/test_drift_check.py
-          tests/unit/test_roadmap_guard.py
-          tests/unit/test_event_streaming.py
-          tests/unit/test_pipeline_events.py
-          tests/unit/test_ci_evidence.py
-          tests/unit/test_runtime.py
-          tests/unit/test_service_auth.py
       - id: repo_validation
         run: python scripts/validate_repository.py
       - id: drift_check

@@ -1,0 +1,7 @@
+target-version = "py311"
+
+[lint]
+# Preserve the existing CI policy while making the documented command
+# deterministic for local and CI runs. E501 and E402 were already excluded.
+select = ["E"]
+ignore = ["E501", "E402"]
