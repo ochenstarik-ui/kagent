@@ -1,5 +1,11 @@
 # Agent Changelog
 
+## 2026-08-13 — Gateway connection metadata bootstrap
+
+- The Axum server now supplies `ConnectInfo<SocketAddr>` to requests because the existing rate-limit middleware requires peer connection metadata when no forwarded address is present.
+- Without this make-service wiring, extraction failed before handlers ran and the panic boundary returned HTTP 500 for every request, including the Gateway liveness probe.
+- The repair was isolated from the broader P13 branch as a prerequisite fix; it does not change routes, ports, protocols, dependencies, or network exposure.
+
 ## 2026-08-13 — Gateway runtime healthcheck client
 
 - The Gateway runtime image installs Debian's `wget` package because the existing Compose
