@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Changed
+- Added Account Pool and Model Registry Leases in Reasoning Engine (`ModelRegistry`). Implements per-request account leasing to prevent 429 rate limiting and quota exhaustion across parallel executions. Replaces single-key config with dynamic pool configuration. Includes API endpoints for manual account management.
 - The replay evaluation suite now uses three runnable, deterministic stdlib repository snapshots with tracked response cassettes, immutable acceptance verifiers, empty-diff proofs, and adjacent-behavior mutation proofs; reports include zero-provider replay counters and recorded per-case cost/repair metrics.
 - Verified capability status is now generated deterministically from tracked successful `main` push evidence; automation updates the evidence and roadmap through a pull request rather than pushing to `main`.
 - Python CI now lints all Python test scopes and runs every unit test directory instead of a named-file allowlist.

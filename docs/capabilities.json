@@ -275,7 +275,11 @@
       "GET /v1/models",
       "POST /v1/decide",
       "POST /v1/execute",
-      "GET /v1/telemetry"
+      "GET /v1/telemetry",
+      "GET /v1/accounts",
+      "POST /v1/accounts/:account_id/pin",
+      "POST /v1/accounts/:account_id/disable",
+      "POST /v1/accounts/:account_id/reset-throttle"
     ],
     "agent-runtime": [
       "GET /health/live",
