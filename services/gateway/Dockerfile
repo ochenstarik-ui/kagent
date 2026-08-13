@@ -1,7 +1,6 @@
 FROM rust:1.88-slim AS builder
 WORKDIR /app
 COPY services/gateway/Cargo.toml services/gateway/Cargo.lock* ./
-RUN mkdir src && echo "fn main() {}" > src/main.rs && cargo build --release 2>/dev/null; rm -rf src
 COPY services/gateway/src/ ./src/
 RUN cargo build --release
 

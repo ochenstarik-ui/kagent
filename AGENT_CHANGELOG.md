@@ -1,5 +1,13 @@
 # Agent Changelog
 
+## 2026-08-13 — Build-only service image gate
+
+- A dedicated matrix job builds the seven Compose service images on every CI trigger without loading, running, or publishing them.
+- Each service uses an isolated GitHub Actions BuildKit cache scope; Dockerfile and build-context content remain normal BuildKit cache inputs.
+- Image-build job evidence participates in computed capability status and blocks publication of verified status when any image is broken.
+- The gateway dummy-source cache build was removed; control-plane dependencies are installed in the pnpm workspace, and the web image no longer assumes an optional `public` directory exists.
+- Architecture rationale is recorded in `docs/adr/0031-build-only-service-image-gate.md`.
+
 ## 2026-08-13 — Permanent verification-state branch
 
 - Successful `main` push CI publishes generated `docs/ci-results.json` and `docs/ROADMAP.md`

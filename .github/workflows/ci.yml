@@ -2,7 +2,6 @@ name: CI
 
 on:
   push:
-    branches: ["main"]
   pull_request:
   workflow_dispatch:
 
@@ -101,8 +100,41 @@ jobs:
         run: >-
           echo 'commands={"python scripts/eval_suite.py --replay":"${{ steps.eval_replay.outcome }}"}' >> "$GITHUB_OUTPUT"
 
+  image-build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: gateway
+            dockerfile: services/gateway/Dockerfile
+          - service: control-plane
+            dockerfile: services/control-plane/Dockerfile
+          - service: reasoning-engine
+            dockerfile: services/reasoning-engine/Dockerfile
+          - service: agent-runtime
+            dockerfile: services/agent_runtime/Dockerfile
+          - service: pipeline
+            dockerfile: services/pipeline/Dockerfile
+          - service: observability
+            dockerfile: services/observability/Dockerfile
+          - service: web
+            dockerfile: apps/web/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build ${{ matrix.service }} image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: false
+          load: false
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
   measurability:
-    needs: [node, rust, python, eval, nats-events, integration]
+    needs: [node, rust, python, eval, image-build, nats-events, integration]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
@@ -235,7 +267,7 @@ jobs:
           echo 'commands={"docker compose config -q":"${{ steps.compose_config.outcome }}","python tests/integration/test_pg.py":"${{ steps.integration_tests.outcome }}"}' >> "$GITHUB_OUTPUT"
 
   publish-verification-status:
-    needs: [node, rust, python, eval, nats-events, integration, measurability]
+    needs: [node, rust, python, eval, image-build, nats-events, integration, measurability]
     if: >-
       ${{
         github.event_name == 'push' &&
@@ -244,6 +276,7 @@ jobs:
         needs.rust.result == 'success' &&
         needs.python.result == 'success' &&
         needs.eval.result == 'success' &&
+        needs['image-build'].result == 'success' &&
         needs['nats-events'].result == 'success' &&
         needs.integration.result == 'success' &&
         needs.measurability.result == 'success'

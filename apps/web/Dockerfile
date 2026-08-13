@@ -32,7 +32,6 @@ ENV NODE_ENV=production
 
 # Copy standalone output
 COPY --from=build /app/apps/web/.next/standalone ./
-COPY --from=build /app/apps/web/public ./apps/web/public
 COPY --from=build /app/apps/web/.next/static ./apps/web/.next/static
 
 EXPOSE 3000
