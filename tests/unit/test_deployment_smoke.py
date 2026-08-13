@@ -64,6 +64,21 @@ def test_workflow_runs_full_deployment_smoke_and_preserves_diagnostics() -> None
     assert "needs.deployment.result == 'success'" in workflow
 
 
+def test_integration_database_credentials_remain_coherent() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
+        encoding="utf-8"
+    )
+    integration = workflow.split("  integration:", 1)[1].split(
+        "  publish-verification-status:", 1
+    )[0]
+
+    assert "POSTGRES_PASSWORD: kagent" in integration
+    assert "PGPASSWORD: kagent" in integration
+    assert integration.count(
+        "DATABASE_URL: postgres://kagent:kagent@localhost:5432/kagent"
+    ) == 2
+
+
 def test_deployment_capability_requires_runtime_job() -> None:
     registry = json.loads(
         (ROOT / "docs" / "capabilities.json").read_text(encoding="utf-8")

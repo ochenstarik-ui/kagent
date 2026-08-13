@@ -297,12 +297,12 @@ jobs:
         run: docker compose config -q
       - name: Run Control Plane Integration Tests
         env:
-          DATABASE_URL: postgres://kagent:***@localhost:5432/kagent
+          DATABASE_URL: postgres://kagent:kagent@localhost:5432/kagent
         run: pnpm --filter @kagent/control-plane test
       - name: Run PostgreSQL Integration Tests
         id: integration_tests
         env:
-          DATABASE_URL: postgres://kagent:***@localhost:5432/kagent
+          DATABASE_URL: postgres://kagent:kagent@localhost:5432/kagent
         run: python tests/integration/test_pg.py
       - name: Publish executed command set
         id: command_evidence
