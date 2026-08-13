@@ -1,5 +1,13 @@
 # Agent Changelog
 
+## 2026-08-13 — Gateway runtime healthcheck client
+
+- The Gateway runtime image installs Debian's `wget` package because the existing Compose
+  healthcheck invokes that binary. Without it the healthy, listening Gateway process is marked
+  unhealthy and blocks dependent containers.
+- This adds the GPL-3.0-or-later Debian package only to the container runtime image; no Gateway
+  protocol, route, port, or healthcheck policy changes.
+
 ## 2026-08-13 — Build-only service image gate
 
 - A dedicated matrix job builds the seven Compose service images on every CI trigger without loading, running, or publishing them.

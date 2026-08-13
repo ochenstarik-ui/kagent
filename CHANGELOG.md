@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Changed
+- Gateway runtime images now include the `wget` client required by the existing Compose healthcheck.
 - CI now builds all seven service images on every push, pull request, and manual dispatch without running or publishing them, using scoped GitHub Actions layer caches.
 - Docker builds now compile the gateway from real sources, install the control-plane within its pnpm workspace, and no longer require a missing web `public` directory.
 - The replay evaluation suite now uses three runnable, deterministic stdlib repository snapshots with tracked response cassettes, immutable acceptance verifiers, empty-diff proofs, and adjacent-behavior mutation proofs; reports include zero-provider replay counters and recorded per-case cost/repair metrics.
