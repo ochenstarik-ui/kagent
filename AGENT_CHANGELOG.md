@@ -1,5 +1,16 @@
 # Agent Changelog
 
+## 2026-08-13 — Permanent verification-state branch
+
+- Successful `main` push CI publishes generated `docs/ci-results.json` and `docs/ROADMAP.md`
+  to the single permanent `verification-state` branch; branch and pull-request runs cannot
+  publish.
+- Publication creates a detached local commit and updates only
+  `refs/heads/verification-state` with a force-with-lease bound to the previously observed
+  remote object ID, so concurrent updates fail instead of overwriting unobserved state.
+- The job retains only `contents: write`; pull-request creation, workflow redispatch, direct
+  `main` writes, and per-run automation branches are removed.
+
 ## 2026-08-12 — Runnable replay evaluation cases
 
 - Eval case contract version 1 combines a deterministic repository snapshot, task contract,
