@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Changed
+- Gateway requests now receive peer connection metadata required by the rate limiter, preventing valid requests and the Compose liveness probe from failing with HTTP 500.
 - Gateway runtime images now include the `wget` client required by the existing Compose healthcheck.
 - CI now builds all seven service images on every push, pull request, and manual dispatch without running or publishing them, using scoped GitHub Actions layer caches.
 - Docker builds now compile the gateway from real sources, install the control-plane within its pnpm workspace, and no longer require a missing web `public` directory.
