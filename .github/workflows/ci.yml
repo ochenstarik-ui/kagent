@@ -284,8 +284,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pull-requests: write
-      actions: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -295,21 +293,20 @@ jobs:
         with:
           name: computed-roadmap
           path: status-evidence
-      - name: Publish verified status PR
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Publish verified status
         run: |
           set -euo pipefail
+          state_ref="refs/heads/verification-state"
+          observed_old_oid="$(git ls-remote --refs origin "$state_ref" | cut -f1)"
           cp status-evidence/ci-results.json docs/ci-results.json
           python scripts/roadmap_status.py --no-run-commands
           python scripts/roadmap_status.py --check --no-run-commands
-          branch="automation/verification-state-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git switch -c "$branch"
+          git switch --detach
           git add docs/ci-results.json docs/ROADMAP.md
           git commit -m "Update verified capability status"
-          git push origin "$branch"
-          gh pr create --base main --head "$branch" --title "Update verified capability status" --body "Tracks successful main CI evidence from run ${GITHUB_RUN_ID}."
-          gh workflow run ci.yml --ref "$branch"
+          git push \
+            --force-with-lease="$state_ref:$observed_old_oid" \
+            origin "HEAD:$state_ref"
 

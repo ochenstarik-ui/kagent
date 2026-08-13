@@ -154,7 +154,7 @@ def test_no_run_commands_loads_tracked_evidence_by_default(
     assert "Bootstrap — verified" in roadmap_path.read_text(encoding="utf-8")
 
 
-def test_workflow_publishes_main_evidence_only_through_pr() -> None:
+def test_workflow_publishes_main_evidence_only_to_state_branch() -> None:
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
         encoding="utf-8"
     )
@@ -174,14 +174,14 @@ def test_workflow_publishes_main_evidence_only_through_pr() -> None:
     assert "pull-requests: write" not in measurability
     assert "actions: write" not in measurability
     assert "contents: write" in workflow
-    assert "pull-requests: write" in workflow
-    assert "actions: write" in workflow
-    assert "GH_TOKEN: ${{ github.token }}" in workflow
+    assert "pull-requests: write" not in workflow
+    assert "actions: write" not in workflow
     assert "git add docs/ci-results.json docs/ROADMAP.md" in workflow
-    assert 'git push origin "$branch"' in workflow
-    assert 'gh pr create --base main --head "$branch"' in workflow
-    assert 'gh workflow run ci.yml --ref "$branch"' in workflow
+    assert "refs/heads/verification-state" in workflow
+    assert "git ls-remote --refs origin" in workflow
+    assert "--force-with-lease=" in workflow
+    assert "gh pr create" not in workflow
+    assert "gh workflow run" not in workflow
     assert "git push origin main" not in workflow
-    assert "--force" not in workflow
     assert "gh pr merge" not in workflow
     assert "pull_request_target" not in workflow
