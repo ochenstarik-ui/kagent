@@ -13,6 +13,7 @@
 - Docker builds now compile the gateway from real sources, install the control-plane within its pnpm workspace, and no longer require a missing web `public` directory.
 - The replay evaluation suite now uses three runnable, deterministic stdlib repository snapshots with tracked response cassettes, immutable acceptance verifiers, empty-diff proofs, and adjacent-behavior mutation proofs; reports include zero-provider replay counters and recorded per-case cost/repair metrics.
 - Verified capability status is generated deterministically from tracked successful `main` push evidence and published to the permanent `verification-state` branch without writing to `main`.
+- CI now boots the complete Compose deployment, exercises the public Gateway workflow, verifies the private service perimeter, and preserves container diagnostics.
 - Python CI now lints all Python test scopes and runs every unit test directory instead of a named-file allowlist.
 - Refactored TOTP authentication to separate unit-testable policy from PostgreSQL persistence adapter, fixing cross-instance replay issues and atomic one-time challenges.
 

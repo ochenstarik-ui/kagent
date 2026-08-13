@@ -124,7 +124,7 @@
       "name": "Docker Compose infrastructure",
       "module": "docker-compose.yml",
       "owner": "root",
-      "evidence": ["compose_syntax"],
+      "evidence": ["compose_syntax", "deployment_ci"],
       "artifacts": ["docker-compose.yml", ".env.example", "migrations/001_initial_schema.sql", "migrations/002_auth.sql"]
     },
     {
@@ -245,7 +245,8 @@
     "measurability_ci": { "type": "ci", "job": "measurability", "allow_failure": false },
     "nats_events_ci": { "type": "ci", "job": "nats-events", "allow_failure": false },
     "image_build_ci": { "type": "ci", "job": "image-build", "allow_failure": false },
-    "compose_syntax": { "type": "command", "command": "docker compose config -q", "allow_failure": false }
+    "compose_syntax": { "type": "command", "command": "docker compose config -q", "allow_failure": false },
+    "deployment_ci": { "type": "ci", "job": "deployment", "allow_failure": false }
   },
   "route_table": {
     "gateway": [

@@ -27,6 +27,11 @@ curl http://localhost:8080/api/reasoning/health/live
 curl http://localhost:8080/api/observability/v1/health
 ```
 
+Only Gateway port 8080 is public for KAgent application traffic. Control Plane,
+Reasoning Engine, Agent Runtime, Pipeline, and Observability are reachable only through
+the internal Compose network and the Gateway routes shown above. PostgreSQL, NATS, and
+MinIO development ports are bound to `127.0.0.1` and must not be exposed externally.
+
 ## 3. Environment Variables
 
 | Variable | Default | Required |
@@ -73,7 +78,12 @@ Gateway refuses to start and protected Runtime/Pipeline requests fail closed wit
 
 ## 5. Database Migrations
 
-Migrations are applied automatically on first startup via `docker-entrypoint-initdb.d/`.
+Migrations in `docker-entrypoint-initdb.d/` are applied only on the first startup of an empty PostgreSQL volume.
+Restarting an existing installation does not apply newly added
+migration files. Before updating KAgent, review new files under `migrations/` and apply
+them explicitly in order. A versioned migration runner for upgrades is a separate
+architectural decision; do not assume `docker compose up -d` upgrades an existing schema.
+
 For manual migration:
 
 ```bash
