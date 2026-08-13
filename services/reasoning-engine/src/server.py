@@ -74,6 +74,7 @@ class DecideResponse(BaseModel):
 class ExecuteRequest(BaseModel):
     request_id: str
     messages: list[dict[str, str]]
+    role: str = "default"
 
 
 class ExecuteResponse(BaseModel):
@@ -96,6 +97,19 @@ class ModelInfoResponse(BaseModel):
     price_per_1k_output: float
     quality_score: float
     enabled: bool
+
+
+class AccountStatusResponse(BaseModel):
+    account_id: str
+    provider: str
+    state: str
+    reset_time: Optional[float]
+    total_requests: int
+    total_cost_usd: float
+    pinned_roles: list[str]
+
+class PinRequest(BaseModel):
+    role: str
 
 
 # ═══════════════════════════════════════════════════
@@ -196,7 +210,7 @@ async def execute_model(request: ExecuteRequest):
         raise HTTPException(status_code=404, detail="Decision not found or expired")
     
     decision = entry[1]
-    execution = await engine.execute(decision, request.messages)
+    execution = await engine.execute(decision, request.messages, role=request.model_extra.get('role', 'default') if request.model_extra else 'default')
     
     return ExecuteResponse(
         success=execution.success,
@@ -226,3 +240,23 @@ async def get_telemetry():
             for e in engine.telemetry[-10:]
         ],
     }
+
+@app.get("/v1/accounts", response_model=list[AccountStatusResponse])
+async def list_accounts():
+    return [AccountStatusResponse(**acc) for acc in engine.registry.get_accounts_status()]
+
+@app.post("/v1/accounts/{account_id}/pin")
+async def pin_account(account_id: str, request: PinRequest):
+    engine.registry.pin_account(request.role, account_id)
+    return {"status": "pinned", "account_id": account_id, "role": request.role}
+
+@app.post("/v1/accounts/{account_id}/disable")
+async def disable_account(account_id: str):
+    engine.registry.disable_account(account_id)
+    return {"status": "disabled", "account_id": account_id}
+
+@app.post("/v1/accounts/{account_id}/reset-throttle")
+async def reset_throttle(account_id: str):
+    engine.registry.reset_throttle(account_id)
+    return {"status": "throttle_reset", "account_id": account_id}
+
