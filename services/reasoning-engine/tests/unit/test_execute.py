@@ -13,6 +13,12 @@ client = TestClient(app)
 def setup_teardown(monkeypatch):
     DECISION_CACHE.clear()
     engine.telemetry.clear()
+    
+    # Setup mock account for opencode-go and xai so tests don't fail due to empty pool
+    engine.registry.set_provider_pool("opencode-go", "http://mock", {"oc-1": "test-key-1"})
+    engine.registry.set_provider_pool("xai", "http://mock", {"xai-1": "test-key-2"})
+    engine.registry.set_role_pool("default", ["oc-1", "xai-1"])
+    
     monkeypatch.setenv("EXECUTION_MODE", "live")
     yield
 
