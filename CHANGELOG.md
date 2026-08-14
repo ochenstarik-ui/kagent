@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Changed
+- Gateway now preserves upstream `Content-Encoding`, allowing browsers to decode compressed Web responses instead of receiving a blank/unparseable page.
 - Gateway startup now waits for a healthy Web service without a circular dependency, and Playwright waits for the actual login UI instead of only the Gateway liveness endpoint.
 - Repository validation now scans tracked and non-ignored Git files instead of recursively traversing generated dependency/build trees.
 - Hardened provider account pools: execution roles now select explicit pools, missing roles fail closed, operator endpoints require the internal service credential, and the public Gateway blocks the operator surface.

@@ -28,6 +28,8 @@ preflight before Compose is changed.
 
 The Web service starts independently and exposes an internal healthcheck;
 Gateway startup waits for that healthcheck before publishing a routable UI.
+Gateway preserves end-to-end response content encoding while removing only
+hop-by-hop transfer encoding after materializing the upstream body.
 
 ## Consequences
 
