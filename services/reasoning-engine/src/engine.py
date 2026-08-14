@@ -149,6 +149,9 @@ class ModelRegistry:
             
     def set_role_pool(self, role: str, account_ids: list[str]) -> None:
         self._role_pools[role] = account_ids
+
+    def has_account(self, account_id: str) -> bool:
+        return account_id in self._accounts
         
     def pin_account(self, role: str, account_id: str) -> None:
         self._role_pinned[role] = account_id
@@ -209,9 +212,6 @@ class ModelRegistry:
                 allowed_ids = [pinned_id]
             else:
                 allowed_ids = self._role_pools.get(role, [])
-                if not allowed_ids:
-                    # fallback to all accounts for this provider if role pool empty
-                    allowed_ids = [k for k, v in self._accounts.items() if v.provider == provider]
 
             candidates = [self._accounts[aid] for aid in allowed_ids if aid in self._accounts and self._accounts[aid].provider == provider]
             
@@ -545,27 +545,41 @@ def create_default_engine() -> ReasoningEngine:
         return accounts
         
     # Register providers
+    provider_accounts = {
+        "opencode-go": parse_accounts("oc", "OPENCODE_GO"),
+        "xai": parse_accounts("xai", "XAI"),
+        "openai": parse_accounts("oai", "OPENAI"),
+    }
     engine.registry.set_provider_pool(
         "opencode-go",
         os.getenv("OPENCODE_GO_ENDPOINT", "http://localhost:20127"),
-        parse_accounts("oc", "OPENCODE_GO")
+        provider_accounts["opencode-go"],
     )
     engine.registry.set_provider_pool(
         "xai",
-        os.getenv("XAI_ENDPOINT", "http://localhost:20127"),
-        parse_accounts("xai", "XAI")
+        os.getenv("XAI_ENDPOINT", "https://api.x.ai/v1"),
+        provider_accounts["xai"],
     )
     engine.registry.set_provider_pool(
         "openai",
-        os.getenv("OPENAI_ENDPOINT", "http://localhost:20127"),
-        parse_accounts("oai", "OPENAI")
+        os.getenv("OPENAI_ENDPOINT", "https://api.openai.com/v1"),
+        provider_accounts["openai"],
     )
     
     # Configure roles
-    for role in ["orchestrator", "subagents"]:
+    all_account_ids = [
+        account_id
+        for accounts in provider_accounts.values()
+        for account_id in accounts
+    ]
+    for role in ["default", "orchestrator", "subagents"]:
         pools = os.getenv(f"POOL_{role.upper()}")
-        if pools:
-            engine.registry.set_role_pool(role, pools.split(","))
+        account_ids = (
+            [account_id.strip() for account_id in pools.split(",") if account_id.strip()]
+            if pools
+            else all_account_ids
+        )
+        engine.registry.set_role_pool(role, account_ids)
     
     # Register models
     engine.registry.register(ModelInfo(

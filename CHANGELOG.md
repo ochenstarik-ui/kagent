@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Changed
+- Hardened provider account pools: execution roles now select explicit pools, missing roles fail closed, operator endpoints require the internal service credential, and the public Gateway blocks the operator surface.
 - Prepared the first server release candidate with guarded production Compose, Caddy TLS, loopback-only Gateway binding, restart policies, bounded logs, pinned infrastructure images, repeatable migrations, and full-state backup/restore tooling.
 - Added real browser E2E coverage for the Web dashboard and made it a required CI and verification-status dependency.
 - Gateway requests now receive peer connection metadata required by the rate limiter, preventing valid requests and the Compose liveness probe from failing with HTTP 500.

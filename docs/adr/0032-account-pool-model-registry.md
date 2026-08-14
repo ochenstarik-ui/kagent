@@ -20,7 +20,9 @@ out of rotation and retries through another eligible account. Exhausted pools
 fail explicitly; they never silently borrow credentials from another role.
 
 Operator endpoints may pin, disable, or reset an account, but never return or
-log its secret. Execution telemetry records the non-secret account identifier.
+log its secret. They require the internal service credential and are not routed
+through the public Gateway. Execution telemetry records the non-secret account
+identifier.
 
 ## Consequences
 

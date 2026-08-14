@@ -100,3 +100,9 @@ async def test_secrets_dont_leak(engine):
     for s in status:
         assert "api_key" not in s
         assert "key-" not in str(s)
+
+
+@pytest.mark.asyncio
+async def test_unknown_role_does_not_borrow_another_roles_pool(engine):
+    with pytest.raises(ValueError, match="No accounts configured"):
+        await engine.registry.lease_account("unconfigured", "test-provider")
