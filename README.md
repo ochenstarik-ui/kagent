@@ -4,9 +4,9 @@ KAgent — самостоятельная self-hosted мультиагентна
 
 ## Статус
 
-Текущая версия: **0.1.0-dev — Foundation Bootstrap**.
+Текущая версия: **0.2.0-rc.1 — Server Release Candidate**.
 
-Первый инкремент создаёт чистую основу проекта:
+Релиз-кандидат включает рабочий вертикальный срез платформы:
 
 - monorepo;
 - versioned contracts;
@@ -16,6 +16,10 @@ KAgent — самостоятельная self-hosted мультиагентна
 - TypeScript Control Plane;
 - Rust Gateway;
 - локальную инфраструктуру PostgreSQL, NATS JetStream и MinIO;
+- sandboxed Agent Runtime, проверяемый coding pipeline и multi-agent orchestration;
+- авторизацию, RBAC, TOTP, аудит и observability;
+- Web dashboard и сквозной Playwright E2E;
+- production Compose с HTTPS, миграциями и резервным копированием;
 - ADR, threat model и журналы изменений.
 
 ## Быстрый старт
@@ -33,6 +37,9 @@ docker compose up -d
 pnpm install
 pnpm check
 ```
+
+Развёртывание на сервере выполняется только по
+[production runbook](docs/DEPLOYMENT.md) через `./scripts/deploy_server.sh`.
 
 Запуск Web:
 

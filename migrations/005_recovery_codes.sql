@@ -4,3 +4,6 @@ CREATE TABLE IF NOT EXISTS recovery_codes (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (account_id, code_hash)
 );
+
+INSERT INTO schema_migrations (filename) VALUES ('005_recovery_codes.sql')
+ON CONFLICT (filename) DO NOTHING;

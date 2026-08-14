@@ -427,11 +427,12 @@ def find_env_vars() -> list[str]:
         # Rust: env::var("X")
         for match in re.finditer(r'env::var\([\'"]([A-Z_][A-Z0-9_]*)[\'"]\)', content):
             env_vars.append(match.group(1))
-    compose_path = ROOT / "docker-compose.yml"
-    if compose_path.exists():
-        content = compose_path.read_text(encoding="utf-8", errors="replace")
-        for match in re.finditer(r'\$\{([A-Z_][A-Z0-9_]*)', content):
-            env_vars.append(match.group(1))
+    for compose_name in ("docker-compose.yml", "compose.production.yml"):
+        compose_path = ROOT / compose_name
+        if compose_path.exists():
+            content = compose_path.read_text(encoding="utf-8", errors="replace")
+            for match in re.finditer(r'\$\{([A-Z_][A-Z0-9_]*)', content):
+                env_vars.append(match.group(1))
     return sorted(set(env_vars))
 
 

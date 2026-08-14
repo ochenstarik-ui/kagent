@@ -57,3 +57,6 @@ CREATE INDEX idx_audit_time    ON audit_events(timestamp DESC);
 
 -- Immutable audit (no UPDATE/DELETE allowed via permissions)
 REVOKE UPDATE, DELETE ON audit_events FROM PUBLIC;
+
+INSERT INTO schema_migrations (filename) VALUES ('001_initial_schema.sql')
+ON CONFLICT (filename) DO NOTHING;

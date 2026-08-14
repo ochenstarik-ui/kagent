@@ -50,6 +50,8 @@ Statuses:
 | 0029 | TOTP recovery codes | proposed |
 | 0030 | Unprivileged runtime sandbox | proposed |
 | 0031 | Build-only service image gate | proposed |
+| 0032 | Account pool and model registry leases | accepted |
+| 0033 | Single-server production deployment | accepted |
 ADR-0004 through ADR-0016 are specified in sections 35–41 of `docs/KAGENT_FULL_PRODUCT_SPEC.md`.
 ADR-0017 through ADR-0020 are specified in sections 42–51.
 

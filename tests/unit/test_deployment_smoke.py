@@ -57,11 +57,12 @@ def test_workflow_runs_full_deployment_smoke_and_preserves_diagnostics() -> None
     assert "if: ${{ always() }}" in workflow
     assert "docker compose down -v --remove-orphans" in workflow
     assert (
-        "needs: [node, rust, python, eval, image-build, deployment, nats-events, integration]"
+        "needs: [node, rust, python, eval, image-build, deployment, nats-events, integration, e2e]"
         in workflow
     )
     assert "needs['image-build'].result == 'success'" in workflow
     assert "needs.deployment.result == 'success'" in workflow
+    assert "needs.e2e.result == 'success'" in workflow
 
 
 def test_integration_database_credentials_remain_coherent() -> None:
@@ -146,4 +147,5 @@ def test_deployment_docs_warn_about_nonempty_volume_migrations() -> None:
     normalized = " ".join(deployment.split())
     assert "only on the first startup of an empty PostgreSQL volume" in normalized
     assert "does not apply newly added migration files" in normalized
-    assert "only Gateway port 8080" in normalized
+    assert "Caddy is the only public entry" in normalized
+    assert "inbound firewall ports `22`, `80`, and `443` only" in normalized

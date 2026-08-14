@@ -1,0 +1,70 @@
+services:
+  postgres:
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-kagent}
+      POSTGRES_USER: ${POSTGRES_USER:-kagent}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+
+  minio:
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:?S3_ACCESS_KEY is required}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?S3_SECRET_KEY is required}
+
+  gateway:
+    environment:
+      KAGENT_SERVICE_SECRET: ${KAGENT_SERVICE_SECRET:?KAGENT_SERVICE_SECRET is required}
+
+  reasoning-engine:
+    environment:
+      KAGENT_SERVICE_SECRET: ${KAGENT_SERVICE_SECRET:?KAGENT_SERVICE_SECRET is required}
+
+  control-plane:
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-kagent}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-kagent}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+
+  agent-runtime:
+    environment:
+      KAGENT_SERVICE_SECRET: ${KAGENT_SERVICE_SECRET:?KAGENT_SERVICE_SECRET is required}
+
+  pipeline:
+    environment:
+      KAGENT_SERVICE_SECRET: ${KAGENT_SERVICE_SECRET:?KAGENT_SERVICE_SECRET is required}
+
+  caddy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    init: true
+    depends_on:
+      gateway:
+        condition: service_healthy
+    environment:
+      KAGENT_DOMAIN: ${KAGENT_DOMAIN:?KAGENT_DOMAIN is required}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  backup-helper:
+    image: alpine:3.22.1
+    profiles: ["maintenance"]
+    volumes:
+      - nats-data:/volumes/nats
+      - minio-data:/volumes/minio
+      - agent-workspaces:/volumes/workspaces
+      - caddy-data:/volumes/caddy-data
+      - caddy-config:/volumes/caddy-config
+      - ${BACKUP_DIR:-./backups}:/backups
+
+volumes:
+  caddy-data:
+  caddy-config:

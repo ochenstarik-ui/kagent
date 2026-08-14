@@ -7,6 +7,8 @@
 ## [Unreleased]
 
 ### Changed
+- Prepared the first server release candidate with guarded production Compose, Caddy TLS, loopback-only Gateway binding, restart policies, bounded logs, pinned infrastructure images, repeatable migrations, and full-state backup/restore tooling.
+- Added real browser E2E coverage for the Web dashboard and made it a required CI and verification-status dependency.
 - Gateway requests now receive peer connection metadata required by the rate limiter, preventing valid requests and the Compose liveness probe from failing with HTTP 500.
 - Gateway runtime images now include the `wget` client required by the existing Compose healthcheck.
 - CI now builds all seven service images on every push, pull request, and manual dispatch without running or publishing them, using scoped GitHub Actions layer caches.
@@ -19,6 +21,7 @@
 - Refactored TOTP authentication to separate unit-testable policy from PostgreSQL persistence adapter, fixing cross-instance replay issues and atomic one-time challenges.
 
 ### Added
+- Added a production preflight that rejects placeholder secrets, unsafe file permissions, public Gateway binding, invalid hostnames, and missing model-provider credentials.
 - Agent Runtime unprivileged execution sandbox using bubblewrap (bwrap), enforcing workspace limits, preventing network access, and dropping secrets.
 - Added recovery codes capability for TOTP, including generate and login endpoints, generating 10 hashed 128-bit codes with atomic revocation and secure double-use rejection.
 
