@@ -1,5 +1,6 @@
 from pathlib import Path
 import re
+import subprocess
 import sys
 
 root = Path(__file__).resolve().parents[1]
@@ -28,8 +29,18 @@ secret_patterns = [
     re.compile(r"BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY"),
 ]
 
-for path in root.rglob("*"):
-    if not path.is_file() or ".git" in path.parts:
+tracked_and_unignored = subprocess.run(
+    ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+    cwd=root,
+    check=True,
+    capture_output=True,
+).stdout.decode("utf-8").split("\0")
+
+for relative in tracked_and_unignored:
+    if not relative:
+        continue
+    path = root / relative
+    if not path.is_file():
         continue
     try:
         content = path.read_text(encoding="utf-8")
@@ -37,7 +48,7 @@ for path in root.rglob("*"):
         continue
     for pattern in secret_patterns:
         if pattern.search(content):
-            errors.append(f"possible secret in {path.relative_to(root)}")
+            errors.append(f"possible secret in {relative}")
 
 if errors:
     for error in errors:
