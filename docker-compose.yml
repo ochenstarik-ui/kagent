@@ -89,6 +89,8 @@ services:
         condition: service_healthy
       observability:
         condition: service_healthy
+      web:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health/live"]
       interval: 10s
@@ -222,9 +224,11 @@ services:
     environment:
       GATEWAY_URL: "http://gateway:8080"
       PORT: "3000"
-    depends_on:
-      gateway:
-        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
 volumes:
   postgres-data:

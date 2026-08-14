@@ -31,6 +31,20 @@ def test_base_compose_is_restartable_and_not_public_by_default() -> None:
         assert block is not None
         assert "<<: *service-defaults" in block.group("body")
 
+    gateway = re.search(
+        r"^  gateway:\n(?P<body>.*?)(?=^  [a-z][a-z0-9-]*:\n)",
+        compose,
+        re.MULTILINE | re.DOTALL,
+    )
+    web = re.search(
+        r"^  web:\n(?P<body>.*?)(?=^volumes:)",
+        compose,
+        re.MULTILINE | re.DOTALL,
+    )
+    assert gateway is not None and "web:" in gateway.group("body")
+    assert web is not None and "healthcheck:" in web.group("body")
+    assert "depends_on:" not in web.group("body")
+
 
 def test_production_overlay_requires_secrets_and_terminates_tls() -> None:
     compose = (ROOT / "compose.production.yml").read_text(encoding="utf-8")

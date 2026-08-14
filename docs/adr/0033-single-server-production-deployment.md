@@ -26,6 +26,9 @@ scripts cover PostgreSQL, NATS, MinIO, agent workspaces, and Caddy state.
 Deployments must use a reviewed tag or pinned commit and pass the production
 preflight before Compose is changed.
 
+The Web service starts independently and exposes an internal healthcheck;
+Gateway startup waits for that healthcheck before publishing a routable UI.
+
 ## Consequences
 
 - a single server is straightforward to operate and recover;
