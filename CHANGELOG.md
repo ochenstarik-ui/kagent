@@ -7,11 +7,15 @@
 ## [Unreleased]
 
 ### Changed
+- The replay evaluation suite now uses three runnable, deterministic stdlib repository snapshots with tracked response cassettes, immutable acceptance verifiers, empty-diff proofs, and adjacent-behavior mutation proofs; reports include zero-provider replay counters and recorded per-case cost/repair metrics.
+- Verified capability status is now generated deterministically from tracked successful `main` push evidence; automation updates the evidence and roadmap through a pull request rather than pushing to `main`.
+- Python CI now lints all Python test scopes and runs every unit test directory instead of a named-file allowlist.
 - Refactored TOTP authentication to separate unit-testable policy from PostgreSQL persistence adapter, fixing cross-instance replay issues and atomic one-time challenges.
 
 ### Added
 - Agent Runtime unprivileged execution sandbox using bubblewrap (bwrap), enforcing workspace limits, preventing network access, and dropping secrets.
 - Added recovery codes capability for TOTP, including generate and login endpoints, generating 10 hashed 128-bit codes with atomic revocation and secure double-use rejection.
+- **Account Pool (P14):** Added provider account pool mechanism for managing multiple AI-provider credentials (opencode-go, nvidia, codex). Implements LRU acquire/release with `FOR UPDATE SKIP LOCKED`, error-driven state transitions (available → rented → throttled/failed/disabled), and operator API (`GET/POST /v1/account-pool/*`). Backed by migration `006_account_pool.sql` and documented in `docs/adr/0031-account-pool.md`.
 
 - Исправлено поведение Pipeline и Reasoning Engine: ответы без 2xx считаются hard error без silent fallback (кроме fallback внутри Reasoning Engine, который работает по-прежнему), а failed TEST создает попытку REPAIR с последующим TEST, лимит исчерпания которого требует HUMAN_REQUIRED решения.
 

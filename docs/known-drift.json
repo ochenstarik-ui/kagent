@@ -2,16 +2,22 @@
   "version": 1,
   "entries": [
     {
+      "path": "services/reasoning-engine/src/account_pool.py",
+      "reason": "P14 account pool module; not yet wired to a server entry_point — will be imported from engine.py in P14 follow-up task",
+      "expires": "2026-11-10",
+      "follow_up_task": "P14-followup: wire account_pool into reasoning-engine server and update entry_points"
+    },
+    {
       "path": "services/reasoning-engine/conftest.py",
-      "reason": "Test configuration loaded automatically by pytest, not imported directly.",
-      "expires": "2026-12-31",
-      "follow_up_task": "None"
+      "reason": "pytest shared fixture file; legitimately unreachable from production entry_points by design",
+      "expires": "2026-11-10",
+      "follow_up_task": "Review and confirm conftest.py pattern is intentional in reasoning-engine test setup"
     },
     {
       "path": "apps/web/e2e/dashboard.spec.ts",
-      "reason": "Playwright E2E test loaded by playwright runner, not statically imported.",
-      "expires": "2026-12-31",
-      "follow_up_task": "None"
+      "reason": "Playwright e2e test added by P13; reachable via playwright.config.ts testDir but not through static imports from main entry_points",
+      "expires": "2026-11-10",
+      "follow_up_task": "P13-followup: verify Playwright config correctly registers e2e dir so drift_check sees it as reachable"
     }
   ]
-}
+}

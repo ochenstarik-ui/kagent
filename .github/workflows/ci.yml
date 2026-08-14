@@ -4,6 +4,7 @@ on:
   push:
     branches: ["main"]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -66,21 +67,13 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -r services/pipeline/requirements.txt ruff pytest pytest-asyncio
-      - run: ruff check services/ scripts/ tests/unit/ --select E --ignore E501,E402
+      - run: ruff check services scripts tests
       - name: Run unit tests
         run: >-
           python -m pytest
+          tests/unit
           services/reasoning-engine/tests/unit
           services/pipeline/tests/unit
-          tests/unit/test_measurability.py
-          tests/unit/test_eval_suite.py
-          tests/unit/test_drift_check.py
-          tests/unit/test_roadmap_guard.py
-          tests/unit/test_event_streaming.py
-          tests/unit/test_pipeline_events.py
-          tests/unit/test_ci_evidence.py
-          tests/unit/test_runtime.py
-          tests/unit/test_service_auth.py
       - id: repo_validation
         run: python scripts/validate_repository.py
       - id: drift_check
@@ -123,12 +116,16 @@ jobs:
           CI_RUN_ID: ${{ github.run_id }}
           CI_COMMIT: ${{ github.sha }}
           CI_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          CI_EVENT: ${{ github.event_name }}
+          CI_REF: ${{ github.ref }}
         run: >-
           python scripts/ci_results.py
           --needs-json "$CI_JOB_RESULTS"
           --run-id "$CI_RUN_ID"
           --commit "$CI_COMMIT"
           --run-url "$CI_RUN_URL"
+          --event "$CI_EVENT"
+          --ref "$CI_REF"
           --output ci-results.json
       - name: Guard committed roadmap
         run: python scripts/roadmap_status.py --check --no-run-commands
@@ -283,3 +280,4 @@ jobs:
           name: playwright-report
           path: apps/web/playwright-report/
           retention-days: 7
+

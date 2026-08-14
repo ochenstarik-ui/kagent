@@ -1,0 +1,36 @@
+# accounts:
+#   opencode-go:
+#     endpoint: https://api.opencode.io/v1
+#     accounts:
+#       - OC_GO_1
+#       - OC_GO_2
+#       - OC_GO_3
+#       - OC_GO_4
+#   nvidia:
+#     endpoint: https://api.nvidia.com/v1
+#     accounts:
+#       - NV_1
+#       - NV_2
+#       - NV_3
+#       - NV_4
+#   codex:
+#     endpoint: https://api.codex.ai/v1
+#     accounts:
+#       - CX_1
+#       - CX_2
+#       - CX_3
+
+pools:
+  orchestrator:
+    - CX_1
+    - CX_2
+    - CX_3
+  subagents:
+    - OC_GO_1
+    - OC_GO_2
+    - OC_GO_3
+    - OC_GO_4
+    - NV_1
+    - NV_2
+    - NV_3
+    - NV_4
