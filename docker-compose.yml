@@ -1,8 +1,18 @@
 # KAgent infrastructure + all services
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  init: true
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
+
 services:
   # ── Infrastructure ──────────────────────
 
   postgres:
+    <<: *service-defaults
     image: postgres:17-alpine
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-kagent}
@@ -12,7 +22,7 @@ services:
       - "127.0.0.1:5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./migrations:/docker-entrypoint-initdb.d
+      - ./migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kagent}"]
       interval: 5s
@@ -20,6 +30,7 @@ services:
       retries: 20
 
   nats:
+    <<: *service-defaults
     image: nats:2.11-alpine
     command: ["-js", "-sd", "/data", "-m", "8222"]
     ports:
@@ -34,7 +45,8 @@ services:
       retries: 20
 
   minio:
-    image: minio/minio:latest
+    <<: *service-defaults
+    image: minio/minio:RELEASE.2025-07-23T15-54-02Z
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${S3_ACCESS_KEY:-kagent-local}
@@ -56,8 +68,9 @@ services:
     build:
       context: .
       dockerfile: services/gateway/Dockerfile
+    <<: *service-defaults
     ports:
-      - "${GATEWAY_PORT:-8080}:8080"
+      - "${GATEWAY_BIND_ADDRESS:-127.0.0.1}:${GATEWAY_PORT:-8080}:8080"
     environment:
       KAGENT_HTTP_HOST: "0.0.0.0"
       KAGENT_GATEWAY_PORT: "8080"
@@ -66,6 +79,8 @@ services:
       OBSERVABILITY_URL: "http://observability:8500"
       WEB_URL: "http://web:3000"
       KAGENT_SERVICE_SECRET: ${KAGENT_SERVICE_SECRET:-}
+      GATEWAY_RATE_LIMIT_WINDOW_SECONDS: ${GATEWAY_RATE_LIMIT_WINDOW_SECONDS:-60}
+      GATEWAY_RATE_LIMIT_MAX_REQUESTS: ${GATEWAY_RATE_LIMIT_MAX_REQUESTS:-120}
       RUST_LOG: ${RUST_LOG:-info}
     depends_on:
       control-plane:
@@ -73,6 +88,8 @@ services:
       reasoning-engine:
         condition: service_healthy
       observability:
+        condition: service_healthy
+      web:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health/live"]
@@ -84,6 +101,7 @@ services:
     build:
       context: .
       dockerfile: services/control-plane/Dockerfile
+    <<: *service-defaults
     environment:
       CONTROL_PLANE_PORT: "8100"
       CONTROL_PLANE_HOST: "0.0.0.0"
@@ -102,11 +120,47 @@ services:
     build:
       context: .
       dockerfile: services/reasoning-engine/Dockerfile
+    <<: *service-defaults
     environment:
-      OPENCODE_GO_ENDPOINT: ${OPENCODE_GO_ENDPOINT:-http://localhost:20127}
+      KAGENT_SERVICE_SECRET: ${KAGENT_SERVICE_SECRET:-}
+      OPENCODE_GO_ENDPOINT: ${OPENCODE_GO_ENDPOINT:-http://host.docker.internal:20127}
       OPENCODE_GO_API_KEY: ${OPENCODE_GO_API_KEY:-}
+      OPENCODE_GO_1_API_KEY: ${OPENCODE_GO_1_API_KEY:-}
+      OPENCODE_GO_2_API_KEY: ${OPENCODE_GO_2_API_KEY:-}
+      OPENCODE_GO_3_API_KEY: ${OPENCODE_GO_3_API_KEY:-}
+      OPENCODE_GO_4_API_KEY: ${OPENCODE_GO_4_API_KEY:-}
+      OPENCODE_GO_5_API_KEY: ${OPENCODE_GO_5_API_KEY:-}
+      OPENCODE_GO_6_API_KEY: ${OPENCODE_GO_6_API_KEY:-}
+      OPENCODE_GO_7_API_KEY: ${OPENCODE_GO_7_API_KEY:-}
+      OPENCODE_GO_8_API_KEY: ${OPENCODE_GO_8_API_KEY:-}
+      OPENCODE_GO_9_API_KEY: ${OPENCODE_GO_9_API_KEY:-}
+      XAI_ENDPOINT: ${XAI_ENDPOINT:-https://api.x.ai/v1}
       XAI_API_KEY: ${XAI_API_KEY:-}
+      XAI_1_API_KEY: ${XAI_1_API_KEY:-}
+      XAI_2_API_KEY: ${XAI_2_API_KEY:-}
+      XAI_3_API_KEY: ${XAI_3_API_KEY:-}
+      XAI_4_API_KEY: ${XAI_4_API_KEY:-}
+      XAI_5_API_KEY: ${XAI_5_API_KEY:-}
+      XAI_6_API_KEY: ${XAI_6_API_KEY:-}
+      XAI_7_API_KEY: ${XAI_7_API_KEY:-}
+      XAI_8_API_KEY: ${XAI_8_API_KEY:-}
+      XAI_9_API_KEY: ${XAI_9_API_KEY:-}
+      OPENAI_ENDPOINT: ${OPENAI_ENDPOINT:-https://api.openai.com/v1}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_1_API_KEY: ${OPENAI_1_API_KEY:-}
+      OPENAI_2_API_KEY: ${OPENAI_2_API_KEY:-}
+      OPENAI_3_API_KEY: ${OPENAI_3_API_KEY:-}
+      OPENAI_4_API_KEY: ${OPENAI_4_API_KEY:-}
+      OPENAI_5_API_KEY: ${OPENAI_5_API_KEY:-}
+      OPENAI_6_API_KEY: ${OPENAI_6_API_KEY:-}
+      OPENAI_7_API_KEY: ${OPENAI_7_API_KEY:-}
+      OPENAI_8_API_KEY: ${OPENAI_8_API_KEY:-}
+      OPENAI_9_API_KEY: ${OPENAI_9_API_KEY:-}
+      POOL_DEFAULT: ${POOL_DEFAULT:-}
+      POOL_ORCHESTRATOR: ${POOL_ORCHESTRATOR:-}
+      POOL_SUBAGENTS: ${POOL_SUBAGENTS:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8200/health/live')"]
       interval: 10s
@@ -117,6 +171,7 @@ services:
     build:
       context: .
       dockerfile: services/agent_runtime/Dockerfile
+    <<: *service-defaults
     environment:
       KAGENT_SERVICE_SECRET: ${KAGENT_SERVICE_SECRET:-}
     volumes:
@@ -131,6 +186,7 @@ services:
     build:
       context: .
       dockerfile: services/pipeline/Dockerfile
+    <<: *service-defaults
     environment:
       RUNTIME_URL: "http://agent-runtime:8300"
       REASONING_URL: "http://reasoning-engine:8200"
@@ -153,6 +209,7 @@ services:
     build:
       context: .
       dockerfile: services/observability/Dockerfile
+    <<: *service-defaults
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8500/health/live')"]
       interval: 10s
@@ -163,12 +220,15 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+    <<: *service-defaults
     environment:
       GATEWAY_URL: "http://gateway:8080"
       PORT: "3000"
-    depends_on:
-      gateway:
-        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
 volumes:
   postgres-data:

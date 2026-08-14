@@ -7,10 +7,17 @@
 ## [Unreleased]
 
 ### Changed
+- Gateway now preserves upstream `Content-Encoding`, allowing browsers to decode compressed Web responses instead of receiving a blank/unparseable page.
+- Gateway startup now waits for a healthy Web service without a circular dependency, and Playwright waits for the actual login UI instead of only the Gateway liveness endpoint.
+- Repository validation now scans tracked and non-ignored Git files instead of recursively traversing generated dependency/build trees.
+- Hardened provider account pools: execution roles now select explicit pools, missing roles fail closed, operator endpoints require the internal service credential, and the public Gateway blocks the operator surface.
+- Prepared the first server release candidate with guarded production Compose, Caddy TLS, loopback-only Gateway binding, restart policies, bounded logs, pinned infrastructure images, repeatable migrations, and full-state backup/restore tooling.
+- Added real browser E2E coverage for the Web dashboard and made it a required CI and verification-status dependency.
 - Gateway requests now receive peer connection metadata required by the rate limiter, preventing valid requests and the Compose liveness probe from failing with HTTP 500.
 - Gateway runtime images now include the `wget` client required by the existing Compose healthcheck.
 - CI now builds all seven service images on every push, pull request, and manual dispatch without running or publishing them, using scoped GitHub Actions layer caches.
 - Docker builds now compile the gateway from real sources, install the control-plane within its pnpm workspace, and no longer require a missing web `public` directory.
+- Added Account Pool and Model Registry Leases in Reasoning Engine (`ModelRegistry`). Implements per-request account leasing to prevent 429 rate limiting and quota exhaustion across parallel executions. Replaces single-key config with dynamic pool configuration. Includes API endpoints for manual account management.
 - The replay evaluation suite now uses three runnable, deterministic stdlib repository snapshots with tracked response cassettes, immutable acceptance verifiers, empty-diff proofs, and adjacent-behavior mutation proofs; reports include zero-provider replay counters and recorded per-case cost/repair metrics.
 - Verified capability status is generated deterministically from tracked successful `main` push evidence and published to the permanent `verification-state` branch without writing to `main`.
 - CI now boots the complete Compose deployment, exercises the public Gateway workflow, verifies the private service perimeter, and preserves container diagnostics.
@@ -18,6 +25,7 @@
 - Refactored TOTP authentication to separate unit-testable policy from PostgreSQL persistence adapter, fixing cross-instance replay issues and atomic one-time challenges.
 
 ### Added
+- Added a production preflight that rejects placeholder secrets, unsafe file permissions, public Gateway binding, invalid hostnames, and missing model-provider credentials.
 - Agent Runtime unprivileged execution sandbox using bubblewrap (bwrap), enforcing workspace limits, preventing network access, and dropping secrets.
 - Added recovery codes capability for TOTP, including generate and login endpoints, generating 10 hashed 128-bit codes with atomic revocation and secure double-use rejection.
 

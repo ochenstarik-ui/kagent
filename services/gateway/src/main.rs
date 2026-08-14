@@ -125,6 +125,14 @@ async fn proxy(
             .into_response());
     }
 
+    // Provider-account controls are operator-only. The Gateway is public and
+    // injects its internal service credential into upstream requests, so merely
+    // validating that header in the Reasoning Engine would let any public caller
+    // inherit operator authority. Operators use the private Compose network.
+    if is_operator_only_path(path) {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
     let backend_url = backend_url_from_uri(
         req.uri(),
         &state.control_plane_url,
@@ -184,12 +192,16 @@ async fn proxy(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     for (key, value) in resp_headers.iter() {
-        if key != "transfer-encoding" && key != "content-encoding" {
+        if should_forward_response_header(key) {
             response.headers_mut().insert(key, value.clone());
         }
     }
 
     Ok(response)
+}
+
+fn is_operator_only_path(path: &str) -> bool {
+    path == "/api/reasoning/v1/accounts" || path.starts_with("/api/reasoning/v1/accounts/")
 }
 
 // ── Helpers ───────────────────────────────
@@ -260,6 +272,13 @@ fn should_forward_header(name: &HeaderName) -> bool {
             | "x-kagent-service-secret"
             | "x-request-id"
     )
+}
+
+fn should_forward_response_header(name: &HeaderName) -> bool {
+    // Hyper has already materialized the chunked body, so transfer-encoding is
+    // no longer valid. Content-encoding must stay: the body is still compressed
+    // and browsers need the header in order to decode it before parsing HTML.
+    name != "transfer-encoding"
 }
 
 fn build_upstream_request(
@@ -645,5 +664,27 @@ mod tests {
             request.headers().get("content-type"),
             Some(&HeaderValue::from_static("application/json")),
         );
+    }
+
+    #[test]
+    fn keeps_account_operator_api_off_the_public_gateway() {
+        assert!(is_operator_only_path("/api/reasoning/v1/accounts"));
+        assert!(is_operator_only_path(
+            "/api/reasoning/v1/accounts/openai-1/disable"
+        ));
+        assert!(!is_operator_only_path("/api/reasoning/v1/models"));
+    }
+
+    #[test]
+    fn preserves_upstream_content_encoding_for_browser_responses() {
+        assert!(should_forward_response_header(&HeaderName::from_static(
+            "content-encoding"
+        )));
+        assert!(should_forward_response_header(&HeaderName::from_static(
+            "content-length"
+        )));
+        assert!(!should_forward_response_header(&HeaderName::from_static(
+            "transfer-encoding"
+        )));
     }
 }

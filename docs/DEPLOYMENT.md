@@ -1,157 +1,140 @@
-# KAgent Production Deployment Guide
+# KAgent single-server deployment
 
-## 1. Prerequisites
+This runbook deploys KAgent behind Caddy with automatic TLS. The base Compose
+file is suitable for local development; a server must also use
+`compose.production.yml`.
 
-- Docker Engine 24+ with Compose v2
-- 4 GB RAM minimum (8 GB recommended)
-- 20 GB disk space
-- Linux server (Ubuntu 22.04+ recommended) or macOS
-- User namespace support enabled in kernel (required for `bwrap` sandbox isolation)
+## Server prerequisites
 
-## 2. Quick Start
+- Ubuntu 24.04 LTS or another current Linux distribution
+- Docker Engine 24+ and Docker Compose v2
+- 8 GB RAM recommended, 4 GB minimum
+- at least 40 GB free disk plus capacity for workspaces and backups
+- kernel user namespaces and `bwrap` support
+- a DNS `A`/`AAAA` record pointing the KAgent hostname to the server
+- inbound firewall ports `22`, `80`, and `443` only
+
+Do not publish PostgreSQL, NATS, MinIO, or Gateway port 8080. The base Compose
+file binds their diagnostic ports to loopback; Caddy is the only public entry.
+
+## First installation
+
+Deploy a reviewed tag or an explicitly recorded commit, not a moving branch:
 
 ```bash
 git clone https://github.com/ochenstarik-ui/kagent.git
 cd kagent
+git checkout <release-tag-or-commit>
 cp .env.example .env
-# EDIT .env: change all passwords, JWT_SECRET, and KAGENT_SERVICE_SECRET!
-docker compose up -d
+chmod 600 .env
 ```
 
-Verify:
+Generate unique values and edit `.env`:
 
 ```bash
-curl http://localhost:8080/health/live        # Gateway
-curl http://localhost:8080/api/control-plane/health/live
-curl http://localhost:8080/api/reasoning/health/live
-curl http://localhost:8080/api/observability/v1/health
+openssl rand -hex 24  # POSTGRES_PASSWORD
+openssl rand -hex 32  # JWT_SECRET
+openssl rand -hex 32  # KAGENT_SERVICE_SECRET
+openssl rand -hex 24  # S3_SECRET_KEY
 ```
 
-Only Gateway port 8080 is public for KAgent application traffic. Control Plane,
-Reasoning Engine, Agent Runtime, Pipeline, and Observability are reachable only through
-the internal Compose network and the Gateway routes shown above. PostgreSQL, NATS, and
-MinIO development ports are bound to `127.0.0.1` and must not be exposed externally.
+Set `KAGENT_DOMAIN` to the real hostname and configure at least one provider
+key. If OpenCode-Go runs on the Docker host, keep
+`OPENCODE_GO_ENDPOINT=http://host.docker.internal:20127`; `localhost` would
+refer to the reasoning-engine container itself.
 
-## 3. Environment Variables
-
-| Variable | Default | Required |
-|----------|---------|----------|
-| `POSTGRES_PASSWORD` | `change-me-locally` | **CHANGE** |
-| `JWT_SECRET` | `dev-secret-...` | **CHANGE** (min 32 chars) |
-| `KAGENT_SERVICE_SECRET` | `change-me-...` | **CHANGE** (unique per installation) |
-| `S3_SECRET_KEY` | `change-me-locally` | **CHANGE** |
-| `OPENCODE_GO_API_KEY` | — | Optional |
-| `XAI_API_KEY` | — | Optional |
-| `OPENAI_API_KEY` | — | Optional |
-
-Compose has no built-in fallback for `KAGENT_SERVICE_SECRET`. If it is unset or empty,
-Gateway refuses to start and protected Runtime/Pipeline requests fail closed with `401`.
-
-## 4. Service Architecture
-
-```
-                    ┌─────────────┐
-                    │   Gateway   │ :8080 (public)
-                    │   Rust      │
-                    └──┬───┬───┬──┘
-                       │   │   │
-         ┌─────────────┘   │   └──────────────┐
-         ▼                 ▼                  ▼
-┌─────────────┐  ┌─────────────┐  ┌─────────────┐
-│Control Plane│  │  Reasoning  │  │Observability│
-│   :8100     │  │  :8200      │  │   :8500     │
-│ TypeScript  │  │  Python     │  │  Python     │
-└──────┬──────┘  └─────────────┘  └─────────────┘
-       │
-       ▼
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│ PostgreSQL  │     │Agent Runtime│     │  Pipeline   │
-│   :5432     │     │   :8300     │◄────│   :8400     │
-└─────────────┘     └─────────────┘     └─────────────┘
-       │                   │
-       ▼                   ▼
-┌─────────────┐     ┌─────────────┐
-│    NATS     │     │  Workspace  │
-│   :4222     │     │  Volumes    │
-└─────────────┘     └─────────────┘
-```
-
-## 5. Database Migrations
-
-Migrations in `docker-entrypoint-initdb.d/` are applied only on the first startup of an empty PostgreSQL volume.
-Restarting an existing installation does not apply newly added
-migration files. Before updating KAgent, review new files under `migrations/` and apply
-them explicitly in order. A versioned migration runner for upgrades is a separate
-architectural decision; do not assume `docker compose up -d` upgrades an existing schema.
-
-For manual migration:
+Run the guarded deployment:
 
 ```bash
-docker compose exec postgres psql -U kagent -d kagent -f /docker-entrypoint-initdb.d/001_initial_schema.sql
-docker compose exec postgres psql -U kagent -d kagent -f /docker-entrypoint-initdb.d/002_auth.sql
+./scripts/deploy_server.sh
 ```
 
-## 6. Backup & Restore
+The script rejects placeholders, short secrets, public Gateway binding,
+world-readable `.env`, a missing model provider, invalid Compose, failed
+migrations, and an unhealthy HTTPS endpoint.
 
-### Backup
+## Verification
 
 ```bash
-docker compose exec postgres pg_dump -U kagent kagent > kagent-backup-$(date +%Y%m%d).sql
-docker compose cp minio:/data ./minio-backup/
+curl --fail https://$KAGENT_DOMAIN/health/live
+curl --fail https://$KAGENT_DOMAIN/api/control-plane/health/live
+curl --fail https://$KAGENT_DOMAIN/api/reasoning/health/live
+curl --fail https://$KAGENT_DOMAIN/api/observability/v1/health
+docker compose -f docker-compose.yml -f compose.production.yml ps
 ```
 
-### Restore
+Before admitting real work, run one controlled task through the configured
+provider, reasoning engine, sandboxed runtime, verification pipeline, and Git
+result. The replay suite and deployment smoke test do not prove external
+provider credentials or repository permissions.
+
+## Updates and migrations
+
+Create a backup before every update:
 
 ```bash
-docker compose up -d postgres
-docker compose exec -T postgres psql -U kagent kagent < kagent-backup.sql
-docker compose up -d
+./scripts/backup.sh
+git fetch --tags origin
+git checkout <new-release-tag>
+./scripts/deploy_server.sh
 ```
 
-## 7. Monitoring
+`scripts/migrate.sh` maintains `schema_migrations`, baselines installations
+created before the ledger, and applies only pending SQL files in lexical order.
+Docker's `/docker-entrypoint-initdb.d` mechanism runs only on the first startup
+of an empty PostgreSQL volume and does not apply newly added migration files to
+an existing database; never use it as the upgrade procedure.
 
-- Prometheus metrics: `GET /api/observability/v1/metrics` through Gateway (:8080)
-- Health dashboard: `GET /api/observability/v1/health` through Gateway (:8080)
-- Service health: each service has `/health/live` on the internal Compose network
+## Backup and restore
 
-Prometheus scrape config:
+`scripts/backup.sh` creates:
 
-```yaml
-scrape_configs:
-  - job_name: kagent
-    static_configs:
-      - targets: ['localhost:8080']
-    metrics_path: /api/observability/v1/metrics
+- a PostgreSQL custom-format logical dump;
+- a consistent maintenance snapshot of NATS JetStream, MinIO, agent
+  workspaces, and Caddy state;
+- a manifest containing the Git commit and timestamp.
+
+Stateful writers are paused briefly during the volume snapshot. Copy the
+resulting `backups/<timestamp>` directory to separate encrypted storage.
+
+Restore is intentionally fail-closed and destructive:
+
+```bash
+KAGENT_RESTORE_CONFIRM=ERASE_AND_RESTORE \
+  ./scripts/restore.sh backups/<timestamp>
 ```
 
-## 8. Security Checklist
+Test restoration on a separate server before relying on backups in production.
 
-- [ ] Change all default passwords in .env
-- [ ] Set JWT_SECRET to 64+ random characters: `openssl rand -hex 32`
-- [ ] Set KAGENT_SERVICE_SECRET to a unique random value: `openssl rand -hex 32`
-- [ ] Confirm Compose publishes only Gateway port 8080; internal services stay on the Compose network
-- [ ] Enable TLS with reverse proxy (nginx/caddy)
-- [ ] Set up regular database backups
-- [ ] Review threat model: `docs/THREAT_MODEL.md`
-- [ ] Rotate API keys quarterly
-- [ ] Monitor audit log for suspicious activity
+## Operations
 
-## 9. Scaling
+All services use `restart: unless-stopped` and bounded `json-file` logs.
 
-For production workloads:
+```bash
+docker compose -f docker-compose.yml -f compose.production.yml ps
+docker compose -f docker-compose.yml -f compose.production.yml logs --tail=200
+docker stats
+```
 
-- **PostgreSQL**: Connection pool max_connections=100, add read replicas
-- **Control Plane**: Scale horizontally behind load balancer
-- **Agent Runtime**: One instance per concurrent agent, isolated workspaces
-- **NATS**: Cluster mode for high availability
-- **Gateway**: Can be scaled horizontally (stateless)
+Prometheus-compatible metrics are available at
+`https://$KAGENT_DOMAIN/api/observability/v1/metrics`. Alert at minimum on
+endpoint failure, repeated container restarts, disk usage, failed backups,
+PostgreSQL availability, provider throttling, and a growing task failure rate.
 
-## 10. Troubleshooting
+## Security checklist
 
-| Symptom | Check |
-|---------|-------|
-| Gateway 502 | `docker compose logs control-plane` |
-| Auth errors | JWT_SECRET matches, sessions not expired |
-| DB connection | `docker compose exec postgres pg_isready` |
-| Agent stuck | `docker compose logs agent-runtime` |
-| Pipeline fails | Check max_repair_cycles, review event log |
+- keep `.env` mode `0600` and never commit it;
+- allow SSH keys only and disable password/root SSH login;
+- enable automatic OS security updates;
+- keep Docker and pinned service images patched through reviewed releases;
+- rotate provider keys and service secrets after suspected exposure;
+- review the append-only audit log and `docs/THREAT_MODEL.md`;
+- store backups off-server and encrypt them;
+- do not expose ports 5432, 4222, 8222, 9000, 9001, or 8080 publicly.
+
+## Rollback
+
+Application rollback is a Git checkout of the previous recorded tag followed
+by `./scripts/deploy_server.sh`. Database migrations are forward-only; if a
+release requires schema rollback, restore the pre-update backup instead of
+manually editing production tables.

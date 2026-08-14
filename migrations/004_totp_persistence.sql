@@ -10,3 +10,6 @@ CREATE INDEX idx_totp_challenges_account ON totp_challenges(account_id);
 
 ALTER TABLE accounts
 ADD COLUMN IF NOT EXISTS totp_last_step BIGINT;
+
+INSERT INTO schema_migrations (filename) VALUES ('004_totp_persistence.sql')
+ON CONFLICT (filename) DO NOTHING;

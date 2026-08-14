@@ -1,4 +1,5 @@
 node_modules/
+backups/
 .pnpm-store/
 .next/
 dist/

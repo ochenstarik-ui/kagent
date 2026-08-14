@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 import httpx
 
 from src.server import app, engine, DECISION_CACHE
+from src.engine import ModelExecution
 
 client = TestClient(app)
 
@@ -13,6 +14,12 @@ client = TestClient(app)
 def setup_teardown(monkeypatch):
     DECISION_CACHE.clear()
     engine.telemetry.clear()
+    
+    # Setup mock account for opencode-go and xai so tests don't fail due to empty pool
+    engine.registry.set_provider_pool("opencode-go", "http://mock", {"oc-1": "test-key-1"})
+    engine.registry.set_provider_pool("xai", "http://mock", {"xai-1": "test-key-2"})
+    engine.registry.set_role_pool("default", ["oc-1", "xai-1"])
+    
     monkeypatch.setenv("EXECUTION_MODE", "live")
     yield
 
@@ -41,6 +48,24 @@ def test_execute_success():
         assert data["tokens_input"] == 100
         assert data["tokens_output"] == 50
         assert data["content"] == "Success!"
+
+
+def test_execute_forwards_requested_account_pool_role():
+    decide_res = client.post("/v1/decide", json={"capability": "reasoning"})
+    req_id = decide_res.json()["request_id"]
+    result = ModelExecution(
+        model_id="opencode-go/kimi-k2.7-code",
+        provider="opencode-go",
+        success=True,
+    )
+    with patch.object(engine, "execute", new_callable=AsyncMock) as execute:
+        execute.return_value = result
+        response = client.post(
+            "/v1/execute",
+            json={"request_id": req_id, "messages": [], "role": "orchestrator"},
+        )
+    assert response.status_code == 200
+    assert execute.await_args.kwargs["role"] == "orchestrator"
 
 def test_fallback_on_error():
     decide_res = client.post("/v1/decide", json={"capability": "reasoning"})

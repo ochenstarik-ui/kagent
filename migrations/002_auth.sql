@@ -42,3 +42,6 @@ CREATE TABLE IF NOT EXISTS project_members (
 );
 
 CREATE INDEX idx_project_members_account ON project_members(account_id);
+
+INSERT INTO schema_migrations (filename) VALUES ('002_auth.sql')
+ON CONFLICT (filename) DO NOTHING;

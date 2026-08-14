@@ -1,6 +1,9 @@
 """Reasoning Engine API Server — capability-first model routing."""
 
-from fastapi import FastAPI, HTTPException
+import hmac
+import os
+
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Any, Optional
@@ -17,7 +20,7 @@ from .engine import (
 
 app = FastAPI(
     title="KAgent Reasoning Engine",
-    version="0.1.0",
+    version="0.2.0-rc.1",
     description="Capability-first model router with budget-aware optimization",
 )
 
@@ -74,6 +77,7 @@ class DecideResponse(BaseModel):
 class ExecuteRequest(BaseModel):
     request_id: str
     messages: list[dict[str, str]]
+    role: str = "default"
 
 
 class ExecuteResponse(BaseModel):
@@ -98,13 +102,38 @@ class ModelInfoResponse(BaseModel):
     enabled: bool
 
 
+class AccountStatusResponse(BaseModel):
+    account_id: str
+    provider: str
+    state: str
+    reset_time: Optional[float]
+    total_requests: int
+    total_cost_usd: float
+    pinned_roles: list[str]
+
+class PinRequest(BaseModel):
+    role: str
+
+
+def require_operator_secret(
+    x_kagent_service_secret: str | None = Header(default=None),
+) -> None:
+    expected = os.getenv("KAGENT_SERVICE_SECRET", "")
+    if not expected:
+        raise HTTPException(status_code=503, detail="Operator API is not configured")
+    if not x_kagent_service_secret or not hmac.compare_digest(
+        x_kagent_service_secret, expected
+    ):
+        raise HTTPException(status_code=401, detail="Invalid service credential")
+
+
 # ═══════════════════════════════════════════════════
 # Routes
 # ═══════════════════════════════════════════════════
 
 @app.get("/health/live")
 async def health_live():
-    return {"status": "alive", "service": "reasoning-engine", "version": "0.1.0"}
+    return {"status": "alive", "service": "reasoning-engine", "version": "0.2.0-rc.1"}
 
 
 @app.get("/health/ready")
@@ -196,7 +225,7 @@ async def execute_model(request: ExecuteRequest):
         raise HTTPException(status_code=404, detail="Decision not found or expired")
     
     decision = entry[1]
-    execution = await engine.execute(decision, request.messages)
+    execution = await engine.execute(decision, request.messages, role=request.role)
     
     return ExecuteResponse(
         success=execution.success,
@@ -226,3 +255,37 @@ async def get_telemetry():
             for e in engine.telemetry[-10:]
         ],
     }
+
+@app.get("/v1/accounts", response_model=list[AccountStatusResponse])
+async def list_accounts(_: None = Depends(require_operator_secret)):
+    return [AccountStatusResponse(**acc) for acc in engine.registry.get_accounts_status()]
+
+@app.post("/v1/accounts/{account_id}/pin")
+async def pin_account(
+    account_id: str,
+    request: PinRequest,
+    _: None = Depends(require_operator_secret),
+):
+    if not engine.registry.has_account(account_id):
+        raise HTTPException(status_code=404, detail="Account not found")
+    engine.registry.pin_account(request.role, account_id)
+    return {"status": "pinned", "account_id": account_id, "role": request.role}
+
+@app.post("/v1/accounts/{account_id}/disable")
+async def disable_account(
+    account_id: str, _: None = Depends(require_operator_secret)
+):
+    if not engine.registry.has_account(account_id):
+        raise HTTPException(status_code=404, detail="Account not found")
+    engine.registry.disable_account(account_id)
+    return {"status": "disabled", "account_id": account_id}
+
+@app.post("/v1/accounts/{account_id}/reset-throttle")
+async def reset_throttle(
+    account_id: str, _: None = Depends(require_operator_secret)
+):
+    if not engine.registry.has_account(account_id):
+        raise HTTPException(status_code=404, detail="Account not found")
+    engine.registry.reset_throttle(account_id)
+    return {"status": "throttle_reset", "account_id": account_id}
+
