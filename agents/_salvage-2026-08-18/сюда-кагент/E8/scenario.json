@@ -1,0 +1,6 @@
+{
+  "observability": "degraded",
+  "observability_services": "gateway:down,control-plane:down,reasoning-engine:down,agent-runtime:down,pipeline:down",
+  "project_id": "zeXdIThnQ8En",
+  "task_id": "3TsTaWa3AXYj"
+}

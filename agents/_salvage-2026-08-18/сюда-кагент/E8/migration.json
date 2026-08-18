@@ -1,0 +1,4 @@
+{
+  "existing_volume": "preserved",
+  "new_initdb_migration": "not_applied"
+}

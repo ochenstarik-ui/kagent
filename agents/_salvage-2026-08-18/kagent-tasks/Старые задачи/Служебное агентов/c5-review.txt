@@ -1,0 +1,20 @@
+Independent read-only review of KAgent C5 / PR #8. Do not edit, commit, push, merge, or comment.
+
+Repo/worktree: C:\Users\Ochenstarik\kagent\.worktrees\t_340690a6
+PR: https://github.com/ochenstarik-ui/kagent/pull/8
+Diff: origin/main...HEAD at 5bd22d5597e66997f65a3824c008d16998a74715
+Rules: AGENTS.md
+Full original task: C:\Users\Ochenstarik\projects\server-monitor-manager\.hermes\desktop-attachments\c5-nats-events.md
+Fallback preserved task: C:\Users\Ochenstarik\kagent-tasks\c5-nats-events.md
+
+Verified evidence to audit, not assume:
+- CI run 31359697578: node/rust/python/measurability/nats-events/integration all SUCCESS.
+- nats-events CI starts nats:2.11-alpine with JetStream and integration test passed.
+- python scripts/drift_check.py passes; NATS module absent from drift.
+- Current known-drift still includes reasoning/auth because C3 is separate and not merged.
+- Local broad `ruff check services scripts packages/py_events ...` fails on large pre-existing baseline and three BLE001 in new packages/py_events/events.py.
+- Local full unit collection fails on pre-existing Windows module path services.agent_runtime.
+- Explicit task mismatch: services/orchestrator/requirements.txt has nats-py==0.8.0 while pipeline adds nats-py==2.8.0.
+- Capability/roadmap mismatch: final diff does not change docs/capabilities.json, and roadmap_status --dry-run reports nats.events unverified with old evidence requirements.
+
+Review correctness/security/reliability of event envelope, stream naming and idempotency, ack/nak, bounded reconnect, best-effort failure isolation, actual pipeline product import, Docker/CI readiness, package move/shim, dependency/license, docs/ADR/changelogs, capability evidence, known drift, scope. Return VERDICT, BLOCKING yes/no, P0-P3 findings with path:line, acceptance matrix, and residual risks. Treat full original and this additional evidence as the review contract.

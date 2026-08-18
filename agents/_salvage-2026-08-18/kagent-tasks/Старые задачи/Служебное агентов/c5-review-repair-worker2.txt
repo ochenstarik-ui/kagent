@@ -1,0 +1,23 @@
+C5 consolidated repair after independent review. Use existing clean worktree/branch/PR #8. Do not delegate, switch provider, merge, or force-push. Reuse current diff and verified CI; do not repeat original implementation.
+
+Blocking findings to repair:
+1. docs/capabilities.json still has stale nats.events module/services owner/artifacts and evidence [unit_tests, python_ci]. Add a dedicated evidence check whose type is ci and job is exactly nats-events; update nats.events to the actual packages/py_events + pipeline artifacts and the new CI evidence. Follow registry schema and existing style.
+2. Regenerate docs/ROADMAP.md only via scripts/roadmap_status.py (never hand-edit). CI measurability runs --check --no-run-commands, so committed generated output must match. For acceptance evidence after CI, create a temporary untracked ci-results JSON using the actual new run's nats-events=success and run roadmap_status --ci-results ... --dry-run --no-run-commands to show nats.events verified; delete temp file.
+3. Align services/orchestrator/requirements.txt and services/pipeline/requirements.txt on nats-py==2.8.0. This is owner-approved technical default because 0.8.0 lacks the JetStream API used and 2.8.0 is proven by CI. Verify Apache-2.0 provenance/license and run focused orchestrator tests in addition to event tests. Explain the necessary one-line dependency alignment.
+4. New packages/py_events/events.py has three BLE001. Repair with specific NATS/timeout exception classes where possible. At the arbitrary user handler boundary, preserving nak for any handler failure is required; a single targeted `# noqa: BLE001` with an inline semantic rationale and logging is acceptable if no safe narrower type exists. Do not add global ignores or alter Ruff config. Ensure cancellation is not swallowed. Run Ruff on new/changed event files with normal rules and the repository's required `ruff check services scripts` separately; report the known baseline rather than refactoring unrelated files.
+
+Review false positives already resolved; do NOT change these:
+- docker-compose.yml already has NATS healthcheck lines 30-34.
+- CHANGELOG.md is intentionally Russian and consistent.
+- AGENT_CHANGELOG already names unit coverage and CI job; adding actual final run URL/ID is optional only if style permits.
+
+Validation:
+- focused RED/GREEN for each repair where practical;
+- python -m pytest tests/unit/test_event_streaming.py tests/unit/test_pipeline_events.py tests/unit/test_orchestrator.py -q (adjust exact existing orchestrator test path only after inspecting);
+- Ruff on all C5-added/changed Python files;
+- python scripts/drift_check.py;
+- generated roadmap check;
+- git diff --check and scope audit.
+- Commit as a normal follow-up with Task: t_340690a6, push PR #8, wait for all CI jobs. No force.
+- If CI fails, return exact blocker; do not silently change provider/account.
+Return commit SHA, commands/outcomes, dependency evidence, PR/new CI URLs, all job results, and residual baseline failures.

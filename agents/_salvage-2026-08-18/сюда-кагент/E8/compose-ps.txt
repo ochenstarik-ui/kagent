@@ -1,0 +1,11 @@
+NAME                        IMAGE                     COMMAND                  SERVICE            CREATED          STATUS                     PORTS
+kagent-agent-runtime-1      kagent-agent-runtime      "uvicorn src.runtime…"   agent-runtime      36 seconds ago   Up 35 seconds (healthy)    
+kagent-control-plane-1      kagent-control-plane      "docker-entrypoint.s…"   control-plane      36 seconds ago   Exited (1) 6 seconds ago   
+kagent-gateway-1            kagent-gateway            "gateway"                gateway            36 seconds ago   Up 18 seconds (healthy)    0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
+kagent-minio-1              minio/minio:latest        "/usr/bin/docker-ent…"   minio              36 seconds ago   Up 35 seconds (healthy)    127.0.0.1:9000-9001->9000-9001/tcp
+kagent-nats-1               nats:2.11-alpine          "docker-entrypoint.s…"   nats               36 seconds ago   Up 35 seconds (healthy)    127.0.0.1:4222->4222/tcp, 127.0.0.1:8222->8222/tcp, 6222/tcp
+kagent-observability-1      kagent-observability      "uvicorn src.metrics…"   observability      36 seconds ago   Up 35 seconds (healthy)    
+kagent-pipeline-1           kagent-pipeline           "uvicorn src.pipelin…"   pipeline           36 seconds ago   Up 24 seconds (healthy)    
+kagent-postgres-1           postgres:17-alpine        "docker-entrypoint.s…"   postgres           36 seconds ago   Up 6 seconds (healthy)     127.0.0.1:5432->5432/tcp
+kagent-reasoning-engine-1   kagent-reasoning-engine   "uvicorn src.server:…"   reasoning-engine   36 seconds ago   Up 35 seconds (healthy)    
+kagent-web-1                kagent-web                "docker-entrypoint.s…"   web                36 seconds ago   Up 7 seconds               3000/tcp

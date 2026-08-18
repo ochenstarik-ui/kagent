@@ -1,0 +1,18 @@
+C5 repair re-review, read-only. Do not edit/comment/merge. Worktree C:\Users\Ochenstarik\kagent\.worktrees\t_340690a6, PR #8, final HEAD 51551d66d47d0419cbf4b577f16a6fa49e53f58d. Review only repair diff 5bd22d5..HEAD against prior BLOCK findings. Original full task remains at C:\Users\Ochenstarik\projects\server-monitor-manager\.hermes\desktop-attachments\c5-nats-events.md; prior review already read it.
+
+Prior blockers:
+- missing nats capability/job evidence;
+- nats-py mismatch;
+- three BLE001 in new event package.
+Prior false positives already disproved: compose NATS healthcheck exists at lines 30-34; Russian CHANGELOG matches file language; AGENT_CHANGELOG names evidence.
+
+New verified evidence:
+- capabilities now points nats.events to packages/py_events, python_ci + nats_events_ci job nats-events, actual artifacts; ROADMAP generated and --check passes.
+- roadmap_status with actual final CI conclusions python=success and nats-events=success emits `[x] nats.events ... verified`.
+- both orchestrator/pipeline pin nats-py==2.15.0; dependency is Apache-2.0 and final CI installed/tests it.
+- new event package uses specific NATS exceptions; only arbitrary callback boundary has one targeted BLE001 rationale; cancellation not swallowed.
+- focused Ruff PASS; 14 focused event/pipeline/orchestrator tests pass; drift PASS; git diff check clean.
+- PR CI run 31364595568: node/rust/python/measurability/nats-events/integration all SUCCESS.
+- ADR renamed to 0022 to avoid collision with C3 ADR-0021.
+
+Return VERDICT, BLOCKING yes/no, status of each prior finding, any new P0-P3 findings path:line, residual risks. Do not request broad baseline cleanup outside C5.

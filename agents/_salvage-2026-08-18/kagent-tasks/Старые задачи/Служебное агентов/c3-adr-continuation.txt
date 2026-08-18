@@ -1,0 +1,15 @@
+Continue existing KAgent C3 work in place. Do not delegate or restart. Full task: C:\Users\Ochenstarik\kagent-tasks\c3-export-reasoning-contract.md. Rules: AGENTS.md. Worktree C:\Users\Ochenstarik\kagent\.worktrees\t_a8cd8642, branch wt/c3-reasoning-contract, base origin/main 1c85bf5.
+
+Owner decision now explicitly resolves the prior blocker:
+- You MAY add exactly one minimal ADR under docs/adr to satisfy the architectural-change drift guard. The ADR should document making the existing Reasoning Engine contract part of the public @kagent/contracts surface and the TS/Python parity test. Do not expand architecture or implementation.
+- The fresh base had 3 known-drift entries; removing reasoning correctly leaves 2. Treat the stale wording expecting 3 as superseded by arithmetic/current source. Do not add a fake entry.
+
+Preserve existing five intended changes and new parity test. Review the current uncommitted diff before editing. Add the minimal ADR and any required ADR index/changelog reference only if repository convention requires it; keep scope minimal.
+
+Verification:
+1. Re-run contracts typecheck/test, root typecheck/build, full python scripts/drift_check.py, git diff --check.
+2. Reproduce/retain the documented mutation RED evidence (do not leave mutation).
+3. Ensure reasoning.ts absent from drift, known-drift count=2, only auth/nats remain.
+4. Clean Next generated files.
+5. Commit with Task: t_a8cd8642 in body, push existing branch, open PR against main, wait for CI. Do not merge or force push.
+6. Return changed files, exact commands/results, ADR path/rationale, commit SHA, PR/CI URLs and blockers.
