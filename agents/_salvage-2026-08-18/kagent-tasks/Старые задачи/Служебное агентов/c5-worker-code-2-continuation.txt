@@ -1,0 +1,20 @@
+Continue existing KAgent C5 work in place. You are the second implementation worker using the separate OpenCode Go account. Do not delegate and do not restart from scratch.
+
+Full contract: C:\Users\Ochenstarik\kagent-tasks\c5-nats-events.md
+Rules: C:\Users\Ochenstarik\kagent\.worktrees\t_340690a6\AGENTS.md
+Worktree: C:\Users\Ochenstarik\kagent\.worktrees\t_340690a6
+Branch: wt/c5-nats-events, based on origin/main 1c85bf5.
+
+Prior worker-code runs exhausted 60 iterations twice. Preserve and audit the existing uncommitted diff. It currently includes the shared package, pipeline integration, tests, CI NATS job, docs/capability/known-drift changes, dependency/config changes, and ADR. Do not discard completed work.
+
+Residual task:
+1. Read the full current diff and task contract. Identify incomplete/incorrect items only.
+2. Apply strict TDD for any repair: focused RED before production fix, then GREEN.
+3. Verify nats-py version matches orchestrator, provenance/current maintenance, license, and no unexpected dependency/lock impact; report it.
+4. Run focused unit tests first. Fix root causes within C5 scope only.
+5. Run required Ruff and unit suite, drift check, roadmap status before/after evidence, compose config validation if Docker is unavailable, and NATS integration locally only if a real broker/Docker is available. Never fabricate broker evidence.
+6. Confirm broker failure is best-effort and cannot fail pipeline; bounded reconnect; ensure stream rule identical for publish/subscribe; required envelope fields; idempotent stream ensure; real production import from pipeline.
+7. Inspect CI job for nats:2.11-alpine with JetStream and stable health/readiness. No weakening/skips.
+8. Clean generated files. Scope-check final diff. Existing `docs/ROADMAP.md` may be generated; do not hand-mark status. Ensure changes comply with the full C5 boundary and AGENTS.md.
+9. Commit completed work with Task: t_340690a6 in body, push existing branch, create/open PR against main, and wait for GitHub Actions. Do not merge or force-push.
+10. Return exact changed files, tests/commands/outcomes, dependency license, commit SHA, PR/CI URLs, and honest blockers. If OpenCode Go returns quota/rate limit, stop and report it; do not switch provider/account.

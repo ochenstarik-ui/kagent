@@ -1,0 +1,25 @@
+DRIFT CHECK FAILED
+  - [web.dashboard] unknown evidence: build
+  - .venv\Lib\site-packages\_virtualenv.py
+  - .venv\Scripts\activate_this.py
+  - packages\contracts\src\artifact.test.ts
+  - packages\contracts\src\artifact.ts
+  - packages\contracts\src\event.ts
+  - packages\contracts\src\ids.ts
+  - packages\contracts\src\index.ts
+  - packages\contracts\src\reasoning.ts
+  - packages\contracts\src\task.test.ts
+  - packages\contracts\src\task.ts
+  - services\control-plane\src\domain.ts
+  - services\reasoning-engine\src\engine.py
+  - services\reasoning-engine\src\server.py
+  - tests\unit\test_eval_suite.py
+  - tests\unit\test_events.py
+  - tests\unit\test_measurability.py
+  - tests\unit\test_metrics.py
+  - tests\unit\test_orchestrator.py
+  - tests\unit\test_pipeline.py
+  - tests\unit\test_runtime.py
+  - tests\unit\test_totp.py
+  - tracked user-visible changes detected but CHANGELOG.md not updated; add an entry under [Unreleased]
+  - product task must not modify eval or measurability artifacts:  M eval/reports/latest.json

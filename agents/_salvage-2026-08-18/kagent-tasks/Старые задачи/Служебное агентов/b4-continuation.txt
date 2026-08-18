@@ -1,0 +1,14 @@
+Continue KAgent B4 in the existing worktree. Read the full task at C:\Users\Ochenstarik\kagent-tasks\b4-drift-check-quality.md and rules at C:\Users\Ochenstarik\kagent-tasks\AGENTS.md. Do not delegate.
+
+Preserved diff already has these verified results from the orchestrator:
+- python -m pytest tests/unit/test_drift_check.py -q: 7 passed
+- python -m compileall and JSON parsing: pass
+- two consecutive python scripts/drift_check.py runs: both exit 1, byte-identical output
+- output contains exactly the four required unreachable modules (packages/contracts/src/reasoning.ts, services/auth/src/totp.py, services/control-plane/src/db.ts, services/nats/src/events.py), none of the listed false positives, and no unknown evidence.
+
+Remaining work only:
+1. Run repository-configured Ruff on scripts/drift_check.py and tests/unit/test_drift_check.py. Fix lint issues in touched code mechanically without changing behavior; remove unused imports. Do not perform unrelated refactors.
+2. Re-run focused tests, Ruff, compileall/JSON, and two deterministic drift runs. Capture exact output.
+3. Check git diff scope: only scripts/drift_check.py, docs/capabilities.json evidence dictionary/entry points as required, and tests/unit/test_drift_check.py. Do not touch CI or service code.
+4. Commit with a concise message and task ID t_62470602 in the body.
+5. Push wt/b4-drift-check-quality, create a PR against main, and wait for GitHub Actions. Return PR URL, CI URL/status, commit SHA, changed files, exact checks, and any residual blocker. Do not merge.

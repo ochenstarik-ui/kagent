@@ -1,0 +1,14 @@
+Independent read-only review of KAgent C3 / PR #9. Do not edit, commit, push, merge, or comment on GitHub.
+
+Repository/worktree: C:\Users\Ochenstarik\kagent\.worktrees\t_a8cd8642
+PR: https://github.com/ochenstarik-ui/kagent/pull/9
+Diff: origin/main...HEAD, commit 853e95b45cda0c4fe33538991eacafff9ea1d13d
+Repository rules: C:\Users\Ochenstarik\kagent\.worktrees\t_a8cd8642\AGENTS.md
+Full original task: C:\Users\Ochenstarik\projects\server-monitor-manager\.hermes\desktop-attachments\c3-export-reasoning-contract.md
+If that attachment path is unavailable, use the preserved contract C:\Users\Ochenstarik\kagent-tasks\c3-export-reasoning-contract.md and state the source limitation.
+
+Additional owner decision (full text): "Разрешить C3 добавить минимальный ADR и получить зелёный CI". This supersedes the original path boundary only for one minimal ADR and required ADR index entry. Owner also accepted that current main had 3 known-drift entries, so removing reasoning leaves 2; do not require a fake third entry.
+
+Verified delivery evidence to audit, not assume: PR #9 CI run 31358345536 has node/rust/python/measurability/integration success; focused contracts suite reported 10/10; branch clean and one commit ahead.
+
+Review API contract compatibility, TS/Python parity test correctness and brittleness, enum/request-field coverage, mutation evidence, additive public export, changelogs, minimal ADR, known-drift shrinkage, scope, and whether CI/drift evidence satisfies acceptance. Return VERDICT, BLOCKING yes/no, P0-P3 findings with path:line, acceptance matrix, and residual risks. No broad reruns unless necessary.

@@ -1,0 +1,14 @@
+Статус: PR open / CI verified (не merged)
+
+PR: https://github.com/ochenstarik-ui/kagent/pull/3
+Зелёный CI: https://github.com/ochenstarik-ui/kagent/actions/runs/31104728691
+Коммит: 5c86d8b9d008de2d2ef4965da7e72f76fac698e4
+
+Что не выполнено из критериев приёмки:
+- docker compose up -d → Docker не установлен
+- POST /v1/auth/register и /v1/auth/login против PostgreSQL → нет Docker
+- Эти проверки требуют CI-окружения с Docker или ручного прогона
+
+Причина: Docker живёт в WSL и недоступен из Windows PATH.
+Альтернативы: unit-тесты auth покрывают логику хеширования/токенов;
+typecheck подтверждает корректность импортов и типов.

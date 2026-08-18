@@ -1,0 +1,7 @@
+{
+  "agent-runtime": "closed",
+  "control-plane": "closed",
+  "observability": "closed",
+  "pipeline": "closed",
+  "reasoning-engine": "closed"
+}

@@ -1,0 +1,727 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 0d87afc..764cdb1 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -133,8 +133,52 @@ jobs:
+           cache-from: type=gha,scope=${{ matrix.service }}
+           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+ 
++  deployment:
++    needs: [image-build]
++    runs-on: ubuntu-latest
++    timeout-minutes: 25
++    outputs:
++      commands: ${{ steps.command_evidence.outputs.commands }}
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-python@v5
++        with:
++          python-version: "3.11"
++      - name: Prepare ephemeral deployment environment
++        run: python scripts/deployment_smoke.py prepare-env
++      - name: Validate Compose configuration
++        id: compose_config
++        run: docker compose config -q
++      - name: Build and start the complete deployment
++        run: docker compose up -d --build
++      - name: Run Gateway deployment and perimeter scenario
++        id: deployment_smoke
++        run: python scripts/deployment_smoke.py run
++      - name: Collect deployment diagnostics
++        if: ${{ always() }}
++        run: |
++          mkdir -p deployment-evidence
++          docker compose ps --all > deployment-evidence/compose-ps.txt 2>&1 || true
++          docker compose logs --no-color > deployment-evidence/compose.log 2>&1 || true
++      - name: Upload deployment logs
++        if: ${{ always() }}
++        uses: actions/upload-artifact@v4
++        with:
++          name: deployment-logs
++          path: deployment-evidence/
++      - name: Publish executed command set
++        id: command_evidence
++        if: ${{ always() }}
++        run: >-
++          echo 'commands={"docker compose config -q":"${{ steps.compose_config.outcome }}","python scripts/deployment_smoke.py run":"${{ steps.deployment_smoke.outcome }}"}' >> "$GITHUB_OUTPUT"
++      - name: Remove deployment resources
++        if: ${{ always() }}
++        run: |
++          rm -f .env migrations/999_e8_nonempty_volume_probe.sql
++          docker compose down -v --remove-orphans || true
++
+   measurability:
+-    needs: [node, rust, python, eval, image-build, nats-events, integration]
++    needs: [node, rust, python, eval, image-build, deployment, nats-events, integration]
+     if: ${{ always() }}
+     runs-on: ubuntu-latest
+     steps:
+@@ -267,7 +311,7 @@ jobs:
+           echo 'commands={"docker compose config -q":"${{ steps.compose_config.outcome }}","python tests/integration/test_pg.py":"${{ steps.integration_tests.outcome }}"}' >> "$GITHUB_OUTPUT"
+ 
+   publish-verification-status:
+-    needs: [node, rust, python, eval, image-build, nats-events, integration, measurability]
++    needs: [node, rust, python, eval, image-build, deployment, nats-events, integration, measurability]
+     if: >-
+       ${{
+         github.event_name == 'push' &&
+@@ -277,6 +321,7 @@ jobs:
+         needs.python.result == 'success' &&
+         needs.eval.result == 'success' &&
+         needs['image-build'].result == 'success' &&
++        needs.deployment.result == 'success' &&
+         needs['nats-events'].result == 'success' &&
+         needs.integration.result == 'success' &&
+         needs.measurability.result == 'success'
+diff --git a/AGENT_CHANGELOG.md b/AGENT_CHANGELOG.md
+index 172783d..547da90 100644
+--- a/AGENT_CHANGELOG.md
++++ b/AGENT_CHANGELOG.md
+@@ -33,6 +33,12 @@
+ - The job retains only `contents: write`; pull-request creation, workflow redispatch, direct
+   `main` writes, and per-run automation branches are removed.
+ 
++## 2026-08-12 — Deployment smoke evidence
++
++- Added a full-Compose CI smoke that waits on declared healthchecks and exercises registration, authentication, project/task persistence, audit, and observability only through Gateway.
++- Added active and rendered-configuration checks that fail when an internal KAgent service publishes a host port, plus a direct Runtime fail-closed check from the Compose network.
++- Recorded the PostgreSQL initdb limitation on non-empty volumes as deployment evidence without introducing an implicit migration mechanism.
++
+ ## 2026-08-12 — Runnable replay evaluation cases
+ 
+ - Eval case contract version 1 combines a deterministic repository snapshot, task contract,
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index a2c044b..4c31df4 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -13,6 +13,7 @@
+ - Docker builds now compile the gateway from real sources, install the control-plane within its pnpm workspace, and no longer require a missing web `public` directory.
+ - The replay evaluation suite now uses three runnable, deterministic stdlib repository snapshots with tracked response cassettes, immutable acceptance verifiers, empty-diff proofs, and adjacent-behavior mutation proofs; reports include zero-provider replay counters and recorded per-case cost/repair metrics.
+ - Verified capability status is generated deterministically from tracked successful `main` push evidence and published to the permanent `verification-state` branch without writing to `main`.
++- CI now boots the complete Compose deployment, exercises the public Gateway workflow, verifies the private service perimeter, and preserves container diagnostics.
+ - Python CI now lints all Python test scopes and runs every unit test directory instead of a named-file allowlist.
+ - Refactored TOTP authentication to separate unit-testable policy from PostgreSQL persistence adapter, fixing cross-instance replay issues and atomic one-time challenges.
+ 
+diff --git a/docs/DEPLOYMENT.md b/docs/DEPLOYMENT.md
+index 9fb1fe6..8464aa9 100644
+--- a/docs/DEPLOYMENT.md
++++ b/docs/DEPLOYMENT.md
+@@ -27,6 +27,11 @@ curl http://localhost:8080/api/reasoning/health/live
+ curl http://localhost:8080/api/observability/v1/health
+ ```
+ 
++Only Gateway port 8080 is public for KAgent application traffic. Control Plane,
++Reasoning Engine, Agent Runtime, Pipeline, and Observability are reachable only through
++the internal Compose network and the Gateway routes shown above. PostgreSQL, NATS, and
++MinIO development ports are bound to `127.0.0.1` and must not be exposed externally.
++
+ ## 3. Environment Variables
+ 
+ | Variable | Default | Required |
+@@ -73,7 +78,12 @@ Gateway refuses to start and protected Runtime/Pipeline requests fail closed wit
+ 
+ ## 5. Database Migrations
+ 
+-Migrations are applied automatically on first startup via `docker-entrypoint-initdb.d/`.
++Migrations in `docker-entrypoint-initdb.d/` are applied only on the first startup of an empty PostgreSQL volume.
++Restarting an existing installation does not apply newly added
++migration files. Before updating KAgent, review new files under `migrations/` and apply
++them explicitly in order. A versioned migration runner for upgrades is a separate
++architectural decision; do not assume `docker compose up -d` upgrades an existing schema.
++
+ For manual migration:
+ 
+ ```bash
+diff --git a/docs/ROADMAP.md b/docs/ROADMAP.md
+index 9f51317..628c7e1 100644
+--- a/docs/ROADMAP.md
++++ b/docs/ROADMAP.md
+@@ -59,10 +59,11 @@ This file is generated by `scripts/roadmap_status.py`. Do not edit manually.
+     - pnpm test: CI command pnpm test (node): success — [CI run 31519844840](https://github.com/ochenstarik-ui/kagent/actions/runs/31519844840), commit `4e0a20d`, 2026-08-11T17:54:02.770854Z
+     - python_ci: CI job python: success — [CI run 31519844840](https://github.com/ochenstarik-ui/kagent/actions/runs/31519844840), commit `4e0a20d`, 2026-08-11T17:54:02.770854Z
+ 
+-## 0.7 — Docker Compose [partially verified]
++## 0.7 — Docker Compose [unverified]
+ 
+-- [x] [infrastructure.docker] Docker Compose infrastructure — verified
++- [ ] [infrastructure.docker] Docker Compose infrastructure — partial
+     - docker compose config -q: CI command docker compose config -q (integration): success — [CI run 31519844840](https://github.com/ochenstarik-ui/kagent/actions/runs/31519844840), commit `4e0a20d`, 2026-08-11T17:54:02.770854Z
++    - deployment_ci: CI result unavailable for job: deployment
+ - [ ] [infrastructure.images_build] Service images build — unverified
+     - image_build_ci: CI result unavailable for job: image-build
+ 
+diff --git a/docs/capabilities.json b/docs/capabilities.json
+index d2f3657..3849f6e 100644
+--- a/docs/capabilities.json
++++ b/docs/capabilities.json
+@@ -124,7 +124,7 @@
+       "name": "Docker Compose infrastructure",
+       "module": "docker-compose.yml",
+       "owner": "root",
+-      "evidence": ["compose_syntax"],
++      "evidence": ["compose_syntax", "deployment_ci"],
+       "artifacts": ["docker-compose.yml", ".env.example", "migrations/001_initial_schema.sql", "migrations/002_auth.sql"]
+     },
+     {
+@@ -245,7 +245,8 @@
+     "measurability_ci": { "type": "ci", "job": "measurability", "allow_failure": false },
+     "nats_events_ci": { "type": "ci", "job": "nats-events", "allow_failure": false },
+     "image_build_ci": { "type": "ci", "job": "image-build", "allow_failure": false },
+-    "compose_syntax": { "type": "command", "command": "docker compose config -q", "allow_failure": false }
++    "compose_syntax": { "type": "command", "command": "docker compose config -q", "allow_failure": false },
++    "deployment_ci": { "type": "ci", "job": "deployment", "allow_failure": false }
+   },
+   "route_table": {
+     "gateway": [
+diff --git a/scripts/deployment_smoke.py b/scripts/deployment_smoke.py
+new file mode 100644
+index 0000000..e4b544a
+--- /dev/null
++++ b/scripts/deployment_smoke.py
+@@ -0,0 +1,391 @@
++"""Run the E8 Docker Compose deployment smoke without external dependencies."""
++
++from __future__ import annotations
++
++import argparse
++import json
++import os
++import secrets
++import socket
++import subprocess
++import time
++import urllib.error
++import urllib.request
++from pathlib import Path
++from typing import Any
++
++ROOT = Path(__file__).resolve().parents[1]
++ENV_PATH = ROOT / ".env"
++EVIDENCE_DIR = ROOT / "deployment-evidence"
++MIGRATION_PROBE = ROOT / "migrations" / "999_e8_nonempty_volume_probe.sql"
++INTERNAL_SERVICE_PORTS = {
++    "control-plane": 8100,
++    "reasoning-engine": 8200,
++    "agent-runtime": 8300,
++    "pipeline": 8400,
++    "observability": 8500,
++}
++
++
++def run(command: list[str], *, capture: bool = True) -> subprocess.CompletedProcess[str]:
++    """Run a command from the repository root and fail with bounded diagnostics."""
++    result = subprocess.run(
++        command,
++        cwd=ROOT,
++        check=False,
++        capture_output=capture,
++        text=True,
++        encoding="utf-8",
++        errors="replace",
++    )
++    if result.returncode != 0:
++        stdout = (result.stdout or "")[-2000:]
++        stderr = (result.stderr or "")[-2000:]
++        raise RuntimeError(
++            f"command failed ({result.returncode}): {' '.join(command)}\n"
++            f"stdout:\n{stdout}\nstderr:\n{stderr}"
++        )
++    return result
++
++
++def prepare_env() -> None:
++    """Create an ephemeral Compose environment with generated test credentials."""
++    template = (ROOT / ".env.example").read_text(encoding="utf-8")
++    replacements = {
++        "POSTGRES_PASSWORD": secrets.token_hex(24),
++        "JWT_SECRET": secrets.token_hex(32),
++        "KAGENT_SERVICE_SECRET": secrets.token_hex(32),
++        "S3_SECRET_KEY": secrets.token_hex(24),
++        "GATEWAY_PORT": "8080",
++    }
++    output: list[str] = []
++    seen: set[str] = set()
++    for line in template.splitlines():
++        key = line.split("=", 1)[0] if "=" in line else ""
++        if key in replacements:
++            output.append(f"{key}={replacements[key]}")
++            seen.add(key)
++        else:
++            output.append(line)
++    output.extend(f"{key}={value}" for key, value in replacements.items() if key not in seen)
++    ENV_PATH.write_text("\n".join(output) + "\n", encoding="utf-8")
++
++
++def compose_config() -> dict[str, Any]:
++    raw = run(["docker", "compose", "config", "--format", "json"]).stdout
++    parsed = json.loads(raw)
++    if not isinstance(parsed, dict):
++        raise TypeError("docker compose config must be a JSON object")
++    return parsed
++
++
++def validate_internal_service_ports(config: dict[str, object]) -> None:
++    """Reject any host publication for internal KAgent application services."""
++    services = config.get("services")
++    if not isinstance(services, dict):
++        raise ValueError("Compose configuration has no services object")
++    for service in INTERNAL_SERVICE_PORTS:
++        definition = services.get(service)
++        if not isinstance(definition, dict):
++            raise ValueError(f"Compose configuration is missing service {service}")
++        if definition.get("ports"):
++            raise ValueError(f"internal service {service} publishes a host port")
++
++
++def _parse_compose_ps(raw: str) -> list[dict[str, Any]]:
++    text = raw.strip()
++    if not text:
++        return []
++    try:
++        parsed = json.loads(text)
++        if isinstance(parsed, dict):
++            return [parsed]
++        if isinstance(parsed, list) and all(isinstance(item, dict) for item in parsed):
++            return parsed
++    except json.JSONDecodeError:
++        pass
++    records: list[dict[str, Any]] = []
++    for line in text.splitlines():
++        item = json.loads(line)
++        if not isinstance(item, dict):
++            raise TypeError("docker compose ps emitted a non-object record")
++        records.append(item)
++    return records
++
++
++def wait_for_services(
++    config: dict[str, Any],
++    *,
++    only: set[str] | None = None,
++    timeout_seconds: float = 300.0,
++) -> None:
++    """Wait for declared healthchecks; require running state when none exists."""
++    services = config.get("services")
++    if not isinstance(services, dict):
++        raise ValueError("Compose configuration has no services object")
++    expected = set(services) if only is None else only
++    deadline = time.monotonic() + timeout_seconds
++    latest: list[dict[str, Any]] = []
++    while time.monotonic() < deadline:
++        latest = _parse_compose_ps(
++            run(["docker", "compose", "ps", "--all", "--format", "json"]).stdout
++        )
++        by_service = {
++            str(item.get("Service")): item
++            for item in latest
++            if item.get("Service") is not None
++        }
++        ready = True
++        for name in expected:
++            item = by_service.get(name)
++            definition = services.get(name)
++            if item is None or not isinstance(definition, dict):
++                ready = False
++                break
++            if str(item.get("State", "")).lower() != "running":
++                ready = False
++                break
++            if definition.get("healthcheck") and str(item.get("Health", "")).lower() != "healthy":
++                ready = False
++                break
++        if ready:
++            return
++        time.sleep(2)
++    raise TimeoutError(
++        "Compose services did not become ready before timeout:\n"
++        + json.dumps(latest, indent=2, sort_keys=True)
++    )
++
++
++def _request(
++    base_url: str,
++    method: str,
++    path: str,
++    *,
++    payload: dict[str, object] | None = None,
++    headers: dict[str, str] | None = None,
++    expected_status: int = 200,
++) -> tuple[dict[str, Any] | list[Any] | str, dict[str, str]]:
++    body = json.dumps(payload).encode() if payload is not None else None
++    request_headers = {"accept": "application/json", **(headers or {})}
++    if body is not None:
++        request_headers["content-type"] = "application/json"
++    request = urllib.request.Request(
++        f"{base_url}{path}", data=body, headers=request_headers, method=method
++    )
++    try:
++        with urllib.request.urlopen(request, timeout=15) as response:
++            status = response.status
++            raw = response.read().decode("utf-8", errors="replace")
++            response_headers = {key.lower(): value for key, value in response.headers.items()}
++    except urllib.error.HTTPError as exc:
++        raw = exc.read().decode("utf-8", errors="replace")
++        raise RuntimeError(f"{method} {path} returned {exc.code}: {raw[:500]}") from exc
++    if status != expected_status:
++        raise RuntimeError(f"{method} {path} returned {status}, expected {expected_status}")
++    try:
++        parsed: dict[str, Any] | list[Any] | str = json.loads(raw)
++    except json.JSONDecodeError:
++        parsed = raw
++    return parsed, response_headers
++
++
++def run_gateway_scenario(base_url: str) -> dict[str, str]:
++    health, _ = _request(base_url, "GET", "/health/live")
++    if not isinstance(health, dict) or health.get("status") != "ok":
++        raise AssertionError("Gateway live health response is invalid")
++
++    run_id = os.getenv("GITHUB_RUN_ID", "local")
++    email = f"e8-{run_id}-{secrets.token_hex(4)}@example.invalid"
++    password = f"E8-{secrets.token_hex(12)}"
++    register, _ = _request(
++        base_url,
++        "POST",
++        "/api/control-plane/v1/auth/register",
++        payload={"email": email, "password": password},
++        expected_status=201,
++    )
++    if not isinstance(register, dict) or not isinstance(register.get("account"), dict):
++        raise AssertionError("registration response has no account")
++
++    login, _ = _request(
++        base_url,
++        "POST",
++        "/api/control-plane/v1/auth/login",
++        payload={"email": email, "password": password},
++    )
++    if not isinstance(login, dict) or not isinstance(login.get("tokens"), dict):
++        raise AssertionError("login response has no tokens")
++    tokens = login["tokens"]
++    access_token = tokens.get("accessToken")
++    refresh_token = tokens.get("refreshToken")
++    if not isinstance(access_token, str) or not access_token:
++        raise AssertionError("login response has no access token")
++    if not isinstance(refresh_token, str) or not refresh_token:
++        raise AssertionError("login response has no refresh token")
++    account = login.get("account")
++    if not isinstance(account, dict) or not isinstance(account.get("id"), str):
++        raise AssertionError("login response has no account id")
++    actor_id = account["id"]
++    auth_headers = {"authorization": f"Bearer {access_token}", "x-actor-id": actor_id}
++
++    project, _ = _request(
++        base_url,
++        "POST",
++        "/api/control-plane/v1/projects",
++        payload={"name": "E8 deployment smoke", "description": "Gateway-only CI scenario"},
++        headers=auth_headers,
++        expected_status=201,
++    )
++    if not isinstance(project, dict) or not isinstance(project.get("id"), str):
++        raise AssertionError("project response has no id")
++    project_id = project["id"]
++
++    task, _ = _request(
++        base_url,
++        "POST",
++        "/api/control-plane/v1/tasks",
++        payload={
++            "projectId": project_id,
++            "title": "Verify deployment",
++            "description": "Created through the public Gateway",
++        },
++        headers=auth_headers,
++        expected_status=201,
++    )
++    if not isinstance(task, dict) or not isinstance(task.get("id"), str):
++        raise AssertionError("task response has no id")
++    task_id = task["id"]
++
++    fetched, _ = _request(
++        base_url,
++        "GET",
++        f"/api/control-plane/v1/tasks/{task_id}",
++        headers=auth_headers,
++    )
++    if not isinstance(fetched, dict) or fetched.get("projectId") != project_id:
++        raise AssertionError("task read-back does not match the created project")
++
++    audit, _ = _request(
++        base_url,
++        "GET",
++        f"/api/control-plane/v1/audit?projectId={project_id}",
++        headers=auth_headers,
++    )
++    if not isinstance(audit, dict) or not audit.get("items"):
++        raise AssertionError("audit log is empty after project and task creation")
++
++    observability_health, _ = _request(
++        base_url, "GET", "/api/observability/v1/health"
++    )
++    if not isinstance(observability_health, dict):
++        raise AssertionError("observability health response is invalid")
++    overall = observability_health.get("overall")
++    services = observability_health.get("services")
++    if overall not in {"healthy", "degraded"} or not isinstance(services, list):
++        raise AssertionError("observability health response has no aggregate status")
++    service_states: list[str] = []
++    for service in services:
++        if not isinstance(service, dict):
++            raise AssertionError("observability health contains a non-object service")
++        name = service.get("name")
++        status = service.get("status")
++        if not isinstance(name, str) or not isinstance(status, str):
++            raise AssertionError("observability health service has no name or status")
++        service_states.append(f"{name}:{status}")
++
++    dashboard, _ = _request(base_url, "GET", "/api/observability/v1/dashboard")
++    if not isinstance(dashboard, dict) or dashboard.get("title") != "KAgent Dashboard":
++        raise AssertionError("observability dashboard response is invalid")
++
++    return {
++        "project_id": project_id,
++        "task_id": task_id,
++        "observability": overall,
++        "observability_services": ",".join(service_states),
++    }
++
++
++def assert_host_perimeter_closed(host: str = "127.0.0.1") -> dict[str, str]:
++    results: dict[str, str] = {}
++    for service, port in INTERNAL_SERVICE_PORTS.items():
++        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
++            sock.settimeout(0.5)
++            if sock.connect_ex((host, port)) == 0:
++                raise AssertionError(f"internal service {service} answers on host port {port}")
++        results[service] = "closed"
++    return results
++
++
++def assert_runtime_rejects_missing_secret() -> None:
++    code = (
++        "import urllib.error,urllib.request; "
++        "url='http://agent-runtime:8300/v1/tools'; "
++        "\ntry: urllib.request.urlopen(url,timeout=5)"
++        "\nexcept urllib.error.HTTPError as exc:"
++        "\n assert exc.code == 401, exc.code"
++        "\nelse: raise AssertionError('runtime accepted a request without service secret')"
++    )
++    run(["docker", "compose", "exec", "-T", "pipeline", "python", "-c", code])
++
++
++def demonstrate_nonempty_volume_migration(config: dict[str, Any]) -> dict[str, str]:
++    if MIGRATION_PROBE.exists():
++        raise FileExistsError(f"migration probe already exists: {MIGRATION_PROBE}")
++    run(["docker", "compose", "stop", "postgres"])
++    MIGRATION_PROBE.write_text(
++        "CREATE TABLE e8_nonempty_volume_probe (id integer primary key);\n",
++        encoding="utf-8",
++    )
++    try:
++        run(["docker", "compose", "start", "postgres"])
++        wait_for_services(config, only={"postgres"}, timeout_seconds=120)
++        query = (
++            'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc '
++            '"SELECT to_regclass(\'public.e8_nonempty_volume_probe\') IS NULL"'
++        )
++        result = run(["docker", "compose", "exec", "-T", "postgres", "sh", "-c", query])
++        if result.stdout.strip() != "t":
++            raise AssertionError(
++                "new initdb migration unexpectedly ran on the existing PostgreSQL volume"
++            )
++        return {"existing_volume": "preserved", "new_initdb_migration": "not_applied"}
++    finally:
++        MIGRATION_PROBE.unlink(missing_ok=True)
++
++
++def run_smoke() -> None:
++    EVIDENCE_DIR.mkdir(exist_ok=True)
++    config = compose_config()
++    validate_internal_service_ports(config)
++    wait_for_services(config)
++    gateway_port = os.getenv("GATEWAY_PORT", "8080")
++    scenario = run_gateway_scenario(f"http://127.0.0.1:{gateway_port}")
++    perimeter = assert_host_perimeter_closed()
++    assert_runtime_rejects_missing_secret()
++    migration = demonstrate_nonempty_volume_migration(config)
++    (EVIDENCE_DIR / "scenario.json").write_text(
++        json.dumps(scenario, indent=2, sort_keys=True) + "\n", encoding="utf-8"
++    )
++    (EVIDENCE_DIR / "perimeter.json").write_text(
++        json.dumps(perimeter, indent=2, sort_keys=True) + "\n", encoding="utf-8"
++    )
++    (EVIDENCE_DIR / "migration.json").write_text(
++        json.dumps(migration, indent=2, sort_keys=True) + "\n", encoding="utf-8"
++    )
++    print("DEPLOYMENT SMOKE PASSED")
++
++
++def main() -> int:
++    parser = argparse.ArgumentParser(description="KAgent Compose deployment smoke")
++    parser.add_argument("action", choices=("prepare-env", "run"))
++    args = parser.parse_args()
++    if args.action == "prepare-env":
++        prepare_env()
++    else:
++        run_smoke()
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/tests/unit/test_deployment_smoke.py b/tests/unit/test_deployment_smoke.py
+new file mode 100644
+index 0000000..e9cd7d5
+--- /dev/null
++++ b/tests/unit/test_deployment_smoke.py
+@@ -0,0 +1,149 @@
++"""E8 contract tests for the deployment smoke and service perimeter."""
++
++import json
++from pathlib import Path
++
++import pytest
++
++from scripts import deployment_smoke
++
++
++ROOT = Path(__file__).resolve().parents[2]
++INTERNAL_SERVICES = {
++    "control-plane",
++    "reasoning-engine",
++    "agent-runtime",
++    "pipeline",
++    "observability",
++}
++
++
++def _compose_config() -> dict[str, object]:
++    return {
++        "services": {
++            "gateway": {"ports": [{"target": 8080, "published": "8080"}]},
++            **{name: {} for name in INTERNAL_SERVICES},
++        }
++    }
++
++
++def test_internal_service_port_guard_accepts_closed_perimeter() -> None:
++    deployment_smoke.validate_internal_service_ports(_compose_config())
++
++
++@pytest.mark.parametrize("service", sorted(INTERNAL_SERVICES))
++def test_internal_service_port_guard_rejects_published_port(service: str) -> None:
++    config = _compose_config()
++    services = config["services"]
++    assert isinstance(services, dict)
++    services[service] = {"ports": [{"target": 8100, "published": "8100"}]}
++
++    with pytest.raises(ValueError, match=service):
++        deployment_smoke.validate_internal_service_ports(config)
++
++
++def test_workflow_runs_full_deployment_smoke_and_preserves_diagnostics() -> None:
++    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
++        encoding="utf-8"
++    )
++
++    assert "  deployment:" in workflow
++    assert "timeout-minutes:" in workflow
++    assert "python scripts/deployment_smoke.py prepare-env" in workflow
++    assert "docker compose up -d --build" in workflow
++    assert "python scripts/deployment_smoke.py run" in workflow
++    assert "docker compose logs --no-color" in workflow
++    assert "name: deployment-logs" in workflow
++    assert "if: ${{ always() }}" in workflow
++    assert "docker compose down -v --remove-orphans" in workflow
++    assert (
++        "needs: [node, rust, python, eval, image-build, deployment, nats-events, integration]"
++        in workflow
++    )
++    assert "needs['image-build'].result == 'success'" in workflow
++    assert "needs.deployment.result == 'success'" in workflow
++
++
++def test_integration_database_credentials_remain_coherent() -> None:
++    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
++        encoding="utf-8"
++    )
++    integration = workflow.split("  integration:", 1)[1].split(
++        "  publish-verification-status:", 1
++    )[0]
++
++    assert "POSTGRES_PASSWORD: kagent" in integration
++    assert "PGPASSWORD: kagent" in integration
++    assert integration.count(
++        "DATABASE_URL: postgres://kagent:kagent@localhost:5432/kagent"
++    ) == 2
++
++
++def test_deployment_capability_requires_runtime_job() -> None:
++    registry = json.loads(
++        (ROOT / "docs" / "capabilities.json").read_text(encoding="utf-8")
++    )
++    capability = next(
++        item
++        for item in registry["capabilities"]
++        if item["id"] == "infrastructure.docker"
++    )
++
++    assert capability["evidence"] == ["compose_syntax", "deployment_ci"]
++    assert registry["evidence_checks"]["deployment_ci"] == {
++        "type": "ci",
++        "job": "deployment",
++        "allow_failure": False,
++    }
++
++
++def test_gateway_scenario_records_observability_health(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    requests: list[str] = []
++
++    def fake_request(
++        _base_url: str,
++        method: str,
++        path: str,
++        **_kwargs: object,
++    ) -> tuple[dict[str, object], dict[str, str]]:
++        requests.append(path)
++        responses: dict[str, dict[str, object]] = {
++            "/health/live": {"status": "ok"},
++            "/api/control-plane/v1/auth/register": {"account": {"id": "account-1"}},
++            "/api/control-plane/v1/auth/login": {
++                "account": {"id": "account-1"},
++                "tokens": {"accessToken": "access", "refreshToken": "refresh"},
++            },
++            "/api/control-plane/v1/projects": {"id": "project-1"},
++            "/api/control-plane/v1/tasks": {"id": "task-1"},
++            "/api/control-plane/v1/tasks/task-1": {"projectId": "project-1"},
++            "/api/control-plane/v1/audit?projectId=project-1": {
++                "items": [{"id": "audit-1"}]
++            },
++            "/api/observability/v1/health": {
++                "overall": "degraded",
++                "services": [{"name": "gateway", "status": "down"}],
++            },
++            "/api/observability/v1/dashboard": {"title": "KAgent Dashboard"},
++        }
++        assert method in {"GET", "POST"}
++        return responses[path], {}
++
++    monkeypatch.setattr(deployment_smoke, "_request", fake_request)
++
++    result = deployment_smoke.run_gateway_scenario("http://gateway.test")
++
++    assert "/api/observability/v1/health" in requests
++    assert result["observability"] == "degraded"
++    assert result["observability_services"] == "gateway:down"
++
++
++def test_deployment_docs_warn_about_nonempty_volume_migrations() -> None:
++    deployment = (ROOT / "docs" / "DEPLOYMENT.md").read_text(encoding="utf-8")
++
++    normalized = " ".join(deployment.split())
++    assert "only on the first startup of an empty PostgreSQL volume" in normalized
++    assert "does not apply newly added migration files" in normalized
++    assert "only Gateway port 8080" in normalized

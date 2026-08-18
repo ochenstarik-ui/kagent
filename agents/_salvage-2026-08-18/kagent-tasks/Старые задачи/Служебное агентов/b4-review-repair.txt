@@ -1,0 +1,26 @@
+Repair KAgent B4 / PR #5 in the existing worktree. Do not delegate. Read full task C:\Users\Ochenstarik\kagent-tasks\b4-drift-check-quality.md and AGENTS.md. External owner review at https://github.com/ochenstarik-ui/kagent/pull/5#issuecomment-5231884476 requests exactly two changes. Do not merge.
+
+Current branch/commit: wt/b4-drift-check-quality at 8ffef07. Existing PR #5.
+
+Finding 1 — package exports false positives:
+The orchestrator reproduced on current commit:
+package_entries=['packages/contracts/dist/index.js']
+contract_unreachable includes src/index.ts, artifact.ts, event.ts, ids.ts, task.ts, reasoning.ts.
+Root cause: _package_source_path considers the built dist target before source mapping. If dist/index.js exists from a build, it returns excluded generated output instead of src/index.ts. Also verify export-star traversal marks artifact/event/ids/task reachable while reasoning remains unreachable.
+
+Strict TDD:
+1. Add/adjust a minimal test fixture that contains BOTH dist/index.js and src/index.ts with export-star re-exports. Run it and record RED: source index/re-exports are incorrectly unreachable or package entry picks dist.
+2. Minimal fix: for dist package exports, prefer valid source mapping over generated dist output. Ensure src/index.ts is entry and export-star traversal reaches artifact/event/ids/task; reasoning remains unreachable.
+3. Run GREEN and focused suite.
+
+Finding 2 — out-of-scope reverse env check:
+Current check_env_documentation reports variables read in code but absent from .env.example. B4 and spec 41.5 concern the opposite direction (documented variable never read). Remove this reverse undocumented-env check from B4 execution and remove dead helper code if no longer used. Do not silently replace it with a broad new feature. Preserve any existing check that implements documented-but-unused if present; otherwise leave that separate requirement for B5/follow-up.
+Add/adjust the smallest behavior test needed so final top-level drift output on current tree is only the four required unreachable module paths and no undocumented-env line.
+
+Verification:
+- focused tests and project-configured Ruff
+- compileall + JSON
+- two consecutive python scripts/drift_check.py runs: byte-identical; output contains exactly the four paths required by B4, no listed false positives, no unknown evidence, no undocumented env vars
+- check allowed diff only (same three PR files)
+- create a NEW repair commit (do not amend/rewrite), task t_62470602 in body
+- push existing branch, wait for PR #5 CI; report commit, exact RED/GREEN evidence, CI URL/status. Do not merge or change CI/services.

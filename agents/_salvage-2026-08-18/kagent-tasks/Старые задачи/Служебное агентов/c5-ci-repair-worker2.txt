@@ -1,0 +1,14 @@
+C5 blocking CI repair only. Use existing worktree C:\Users\Ochenstarik\kagent\.worktrees\t_340690a6 and profile/account; do not delegate or change provider.
+
+Current facts:
+- PR #8 remote branch origin/wt/c5-nats-events at 36594da, CI run 31358470226.
+- Only nats-events job failed. Exact root cause: JetStream API returned NoRespondersError/ServiceUnavailableError because nats:2.11-alpine started without JetStream enabled.
+- Local branch is divergent at 4bc2319, ahead 1/behind 1. Its only content difference from remote snapshot is CI YAML: adds service key `command: ["-js", "-sd", "/data", "-m", "8222"]`, maps 4222, and sets NATS_URL 4222.
+- Force-push and shared-history rewrite are forbidden. Do not push the divergent snapshot.
+
+Repair steps:
+1. Verify whether `command` is valid for GitHub Actions service containers. The official services schema usually permits image/credentials/env/ports/volumes/options, so do not assume `command` works. Choose a supported configuration that actually starts official `nats:2.11-alpine` with `-js` and health port. If GitHub Actions cannot pass image CMD via services, use the smallest supported job step to launch that exact image with Docker and document the limitation; do not fabricate service readiness.
+2. Preserve the already-published implementation commit. Safely reconstruct local branch from origin/wt/c5-nats-events and add a normal follow-up commit containing only the CI repair. A local reset to the exact remote commit is allowed; remote rewrite is not. Never force-push.
+3. Validate YAML/action syntax locally if tooling exists; run focused unit tests and git diff --check. Push the normal follow-up commit.
+4. Wait for the new PR #8 CI. If nats-events fails, inspect exact log and perform at most one additional normal repair commit for that blocking root cause. Do not switch provider/account.
+5. Return commit SHA(s), exact commands/results, PR and new CI URL, and status of all jobs. Do not merge.
