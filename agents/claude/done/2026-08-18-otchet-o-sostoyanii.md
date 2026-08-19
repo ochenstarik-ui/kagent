@@ -101,6 +101,13 @@ without pull requests». Зафиксированная в `main` пара «`ca
 
 `cargo fmt --check` и `cargo clippy --all-targets -- -D warnings` проходят: они не линкуют.
 
+Всё перечисленное подтверждено прогонами на pull request этой работы:
+[#36](https://github.com/ochenstarik-ui/kagent/pull/36) — прогон
+[32238154817](https://github.com/ochenstarik-ui/kagent/actions/runs/32238154817),
+[#37](https://github.com/ochenstarik-ui/kagent/pull/37) — прогон
+[32238188346](https://github.com/ochenstarik-ui/kagent/actions/runs/32238188346);
+в обоих 32 проверки `pass`, 2 `skipping`.
+
 ## Замечено рядом
 
 1. **Непрерывная интеграция не запускает `pnpm lint` и `pnpm format:check`.** Job `node`
